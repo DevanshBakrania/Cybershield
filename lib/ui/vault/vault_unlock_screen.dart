@@ -25,7 +25,7 @@ class _VaultUnlockScreenState extends State<VaultUnlockScreen> {
   final verified = <String>{};
   List<int> _pendingPattern = [];
 
-  static const Color highlight = Color(0xFF39FF14); // neon / lime green
+  static const Color highlight = Color(0xFFCCFF00); // neon / lime green
 
   // 🔐 SCREENSHOT PROTECTION
   @override

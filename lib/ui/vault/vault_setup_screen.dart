@@ -23,7 +23,7 @@ class _VaultSetupScreenState extends State<VaultSetupScreen> {
   bool usePattern = false;
   bool useBiometric = false;
 
-  static const Color highlight = Color(0xFF39FF14); // neon green
+  static const Color highlight = Color(0xFFCCFF00); // neon green
 
   // 🔐 Screenshot protection
   @override

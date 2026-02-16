@@ -13,7 +13,7 @@ import '../vault/vault_entry_router.dart';
 /// 🔐 GLOBAL VAULT LOCK SIGNAL
 final ValueNotifier<bool> vaultLockNotifier = ValueNotifier(false);
 
-const Color cyberGreen = Color.fromARGB(255, 51, 243, 17);
+const Color cyberGreen = Color(0xFFCCFF00);
 
 class HomeScreen extends StatefulWidget {
   final String username;

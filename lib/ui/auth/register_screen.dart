@@ -5,7 +5,7 @@ import '../../core/routes.dart';
 import 'pattern_input_widget.dart';
 import 'auth_hash.dart';
 
-const Color cyberGreen = Color.fromARGB(255, 51, 243, 17);
+const Color cyberGreen = Color(0xFFCCFF00);
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});

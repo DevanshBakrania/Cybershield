@@ -30,7 +30,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final Set<String> verified = {};
   List<int> _pendingPattern = [];
 
-  static const Color neon = Color.fromARGB(255, 51, 243, 17);
+  static const Color neon = Color(0xFFCCFF00);
 
   // ─────────────────────────
   // LOAD USER

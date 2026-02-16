@@ -1,22 +1,19 @@
+import 'dart:io';
 import 'dart:ui';
-import 'package:flutter/material.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 
-import '../../utils/secure_screen.dart';
+import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_file/open_file.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:hive/hive.dart';
+
 import '../../core/theme.dart';
 import '../../models/user_model.dart';
 import '../../models/vault_item.dart';
-import '../../storage/hive_boxes.dart';
-import '../../security/vault_service.dart';
-
-import 'vault_add_item_screen.dart';
-import 'vault_item_detail_screen.dart';
-import 'vault_unlock_screen.dart';
-
-final VaultService _vault = VaultService();
-
-const Color neon = Color(0xFF39FF14);
-const Color intruderColor = Colors.orange;
+import '../../security/key_manager.dart';
+import '../../security/encryption.dart';
+import '../../widgets/cyber_ui.dart';
 
 class VaultScreen extends StatefulWidget {
   final UserModel user;
@@ -28,49 +25,28 @@ class VaultScreen extends StatefulWidget {
 
 class _VaultScreenState extends State<VaultScreen>
     with WidgetsBindingObserver, SingleTickerProviderStateMixin {
-  bool _ready = false;
+  final _encryption = EncryptionService();
 
+  late Box<VaultItem> _vaultBox;
+
+  bool _ready = false;
+  bool _isBlurred = false;
+
+  String? _selectedCategory;
   String _searchQuery = "";
-  final TextEditingController _searchCtrl = TextEditingController();
+
+  final _searchCtrl = TextEditingController();
 
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
+
+  // ───────────────────────── INIT ─────────────────────────
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    SecureScreen.enable();
-
-    _pulseController =
-        AnimationController(vsync: this, duration: const Duration(seconds: 2))
-          ..repeat(reverse: true);
-
-    _pulseAnimation = Tween<double>(begin: 0.5, end: 3.0).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
-
-    _vault.init(widget.user.username).then((_) {
-      if (mounted) setState(() => _ready = true);
-    });
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
-      _lockVault();
-    }
-  }
-
-  void _lockVault() {
-    _searchCtrl.clear();
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (_) => VaultUnlockScreen(user: widget.user),
-      ),
-    );
+    _initVault();
   }
 
   @override
@@ -78,11 +54,42 @@ class _VaultScreenState extends State<VaultScreen>
     WidgetsBinding.instance.removeObserver(this);
     _pulseController.dispose();
     _searchCtrl.dispose();
-    SecureScreen.disable();
     super.dispose();
   }
 
-  // ───────────────── UI ROOT ─────────────────
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    setState(() {
+      _isBlurred =
+          state == AppLifecycleState.paused ||
+              state == AppLifecycleState.inactive;
+    });
+  }
+
+  Future<void> _initVault() async {
+    try {
+      final key = await KeyManager().getOrGenerateKey();
+      _encryption.init(key);
+
+      final boxName = 'vault_${widget.user.username}';
+      _vaultBox = await Hive.openBox<VaultItem>(boxName);
+
+      _pulseController = AnimationController(
+        vsync: this,
+        duration: const Duration(seconds: 2),
+      )..repeat(reverse: true);
+
+      _pulseAnimation = Tween<double>(begin: 0.5, end: 3.0).animate(
+        CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
+      );
+
+      if (mounted) setState(() => _ready = true);
+    } catch (e) {
+      debugPrint("Vault init error: $e");
+    }
+  }
+
+  // ───────────────────────── BUILD ─────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -90,251 +97,363 @@ class _VaultScreenState extends State<VaultScreen>
       return const Scaffold(
         backgroundColor: CyberTheme.background,
         body: Center(
-          child: CircularProgressIndicator(color: neon),
+          child: CircularProgressIndicator(color: CyberTheme.neonGreen),
         ),
       );
     }
 
-    return Scaffold(
-      backgroundColor: CyberTheme.background,
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: neon,
-        child: const Icon(Icons.add, color: Colors.black),
-        onPressed: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => VaultAddItemScreen(user: widget.user),
-            ),
-          );
-        },
-      ),
-      body: Stack(
-        children: [
-          _vaultBody(),
-
-          IgnorePointer(
-            child: AnimatedBuilder(
-              animation: _pulseAnimation,
-              builder: (_, __) => CustomPaint(
-                size: Size.infinite,
-                painter: HeartbeatPainter(
-                  color: neon.withOpacity(0.35),
-                  glowWidth: _pulseAnimation.value,
-                ),
+    return Stack(
+      children: [
+        _buildVaultMain(),
+        IgnorePointer(
+          child: AnimatedBuilder(
+            animation: _pulseAnimation,
+            builder: (context, child) => CustomPaint(
+              size: Size.infinite,
+              painter: HeartbeatPainter(
+                color: CyberTheme.neonGreen.withValues(alpha: 0.5),
+                glowWidth: _pulseAnimation.value,
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  // ───────────────── REACTIVE VAULT BODY ─────────────────
-
-  Widget _vaultBody() {
-    return ValueListenableBuilder(
-      valueListenable: HiveBoxes.vault.listenable(),
-      builder: (_, Box<VaultItem> box, __) {
-        final userItems = box.values
-            .where((e) => e.username == widget.user.username)
-            .toList();
-
-        // 🚨 Intruder logs (Evidence)
-        final intruderLogs =
-            userItems.where((e) => e.category == "Evidence").toList();
-
-        // 🔐 Normal items
-        final normalItems =
-            userItems.where((e) => e.category != "Evidence").toList();
-
-        final filtered = normalItems.where((item) {
-          if (_searchQuery.isEmpty) return true;
-          final q = _searchQuery.toLowerCase();
-          return item.title.toLowerCase().contains(q) ||
-              item.subCategory.toLowerCase().contains(q);
-        }).toList();
-
-        // Group by subCategory
-        final Map<String, List<VaultItem>> categories = {};
-        for (final item in filtered) {
-          final key = item.subCategory.trim().isEmpty
-              ? "general"
-              : item.subCategory.toLowerCase();
-          categories.putIfAbsent(key, () => []);
-          categories[key]!.add(item);
-        }
-
-        return Scaffold(
-          backgroundColor: CyberTheme.background,
-          appBar: AppBar(
-            title: const Text("MASTER VAULT",
-                style: TextStyle(letterSpacing: 2)),
-            centerTitle: true,
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            leading: IconButton(
-              icon: const Icon(Icons.arrow_back, color: neon),
-              onPressed: _lockVault,
-            ),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.lock_outline, color: neon),
-                onPressed: _lockVault,
-              ),
-            ],
-            bottom: PreferredSize(
-              preferredSize: const Size.fromHeight(56),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: TextField(
-                  controller: _searchCtrl,
-                  onChanged: (v) => setState(() => _searchQuery = v),
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    hintText: "Search vault...",
-                    prefixIcon: Icon(Icons.search, color: neon),
+        ),
+        if (_isBlurred)
+          Positioned.fill(
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.85),
+                child: const Center(
+                  child: Icon(
+                    Icons.lock_person_rounded,
+                    size: 80,
+                    color: CyberTheme.neonGreen,
                   ),
                 ),
               ),
             ),
           ),
-          body: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              // NORMAL VAULT
-              for (final entry in categories.entries)
-                _categorySection(entry.value),
-
-              // 🚨 INTRUDER LOGS (SEPARATE)
-              if (intruderLogs.isNotEmpty) ...[
-                const SizedBox(height: 24),
-                _intruderSection(intruderLogs),
-              ],
-            ],
-          ),
-        );
-      },
+      ],
     );
   }
 
-  // ───────────────── CATEGORY ─────────────────
+  // ───────────────────────── HOME ─────────────────────────
 
-  Widget _categorySection(List<VaultItem> items) {
-    final title = items.first.subCategory.trim().isEmpty
-        ? "GENERAL"
-        : items.first.subCategory.toUpperCase();
+  Widget _buildVaultMain() {
+    if (_selectedCategory == null) {
+      return Scaffold(
+        backgroundColor: CyberTheme.background,
+        appBar: AppBar(
+          title: const Text("MASTER VAULT", style: TextStyle(letterSpacing: 2)),
+          centerTitle: true,
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+        ),
+        body: GridView.count(
+          crossAxisCount: 2,
+          padding: const EdgeInsets.all(16),
+          crossAxisSpacing: 16,
+          mainAxisSpacing: 16,
+          children: [
+            _tile("PASSWORDS", Icons.vpn_key, Colors.blue, "Password"),
+            _tile("SECURE NOTES", Icons.text_snippet, Colors.amber, "Note"),
+            _tile("FILES", Icons.folder_shared, Colors.purple, "File"),
+            _tile("INTRUDER LOGS", Icons.warning_amber,
+                CyberTheme.dangerRed, "Evidence"),
+          ],
+        ),
+      );
+    }
 
+    return _buildItemList(_selectedCategory!);
+  }
+
+  Widget _tile(String title, IconData icon, Color color, String category) {
+    return GestureDetector(
+      onTap: () => setState(() => _selectedCategory = category),
+      child: Container(
+        decoration: BoxDecoration(
+          color: CyberTheme.surface,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 40, color: color),
+            const SizedBox(height: 12),
+            Text(title,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12)),
+            const SizedBox(height: 6),
+            Text(
+              "${_vaultBox.values.where((e) => e.category == category).length} Items",
+              style: const TextStyle(color: Colors.grey, fontSize: 10),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ───────────────────────── LIST ─────────────────────────
+
+  Widget _buildItemList(String category) {
+    final searchable = category == "Password" || category == "Note";
+
+    final items = _vaultBox.values.where((e) {
+      if (e.category != category) return false;
+      if (!searchable) return true;
+      return e.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+          e.subCategory.toLowerCase().contains(_searchQuery.toLowerCase());
+    }).toList()
+      ..sort((a, b) {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        return a.subCategory.compareTo(b.subCategory);
+      });
+
+    return Scaffold(
+      backgroundColor: CyberTheme.background,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        centerTitle: true,
+        title: Text(category.toUpperCase(), style: const TextStyle(letterSpacing: 2)),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, size: 18),
+          onPressed: () {
+            setState(() {
+              _selectedCategory = null;
+              _searchQuery = "";
+              _searchCtrl.clear();
+            });
+          },
+        ),
+        bottom: searchable
+            ? PreferredSize(
+          preferredSize: const Size.fromHeight(56),
+          child: Padding(
+            padding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: TextField(
+              controller: _searchCtrl,
+              onChanged: (v) => setState(() => _searchQuery = v),
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
+                hintText: "Search vault...",
+                hintStyle:
+                TextStyle(color: Colors.grey.withValues(alpha: 0.5)),
+                prefixIcon: const Icon(Icons.search,
+                    color: CyberTheme.neonGreen),
+                filled: true,
+                fillColor: CyberTheme.surface,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(30),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+            ),
+          ),
+        )
+            : null,
+      ),
+      floatingActionButton: category == "Evidence"
+          ? null
+          : FloatingActionButton(
+        backgroundColor: CyberTheme.neonGreen,
+        child: const Icon(Icons.add, color: Colors.black),
+        onPressed: () => _addItem(category),
+      ),
+      body: items.isEmpty
+          ? const Center(
+        child: Text("No items found",
+            style: TextStyle(color: Colors.grey)),
+      )
+          : ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: items.length,
+        itemBuilder: (_, i) => _itemTile(items[i], category),
+      ),
+    );
+  }
+
+  // ───────────────────────── ITEM ─────────────────────────
+
+  Widget _itemTile(VaultItem item, String category) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: CyberTheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white12),
-      ),
-      child: ExpansionTile(
-        collapsedIconColor: neon,
-        iconColor: neon,
-        title: Text(
-          title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-            letterSpacing: 1.4,
-          ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: item.isPinned
+              ? CyberTheme.neonGreen.withValues(alpha: 0.5)
+              : Colors.transparent,
         ),
-        children: items.map(_itemTile).toList(),
+      ),
+      child: ListTile(
+        leading: Icon(
+          item.isPinned ? Icons.push_pin : Icons.lock,
+          color: item.isPinned ? CyberTheme.neonGreen : Colors.grey,
+        ),
+        title: Text(
+          category == "Note"
+              ? "[${item.subCategory}] ${item.title}"
+              : item.title,
+          style: const TextStyle(
+              color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (category != "Evidence")
+              IconButton(
+                icon: Icon(Icons.push_pin,
+                    color: item.isPinned
+                        ? CyberTheme.neonGreen
+                        : Colors.grey),
+                onPressed: () {
+                  item.isPinned = !item.isPinned;
+                  item.save();
+                  setState(() {});
+                },
+              ),
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.grey),
+              onPressed: () {
+                item.delete();
+                setState(() {});
+              },
+            ),
+          ],
+        ),
+        onTap: () {
+          if (category == "File") {
+            _openFile(item.content);
+          } else if (category == "Evidence") {
+            _showEvidence(item.content);
+          } else {
+            _showDecrypted(item.content);
+          }
+        },
       ),
     );
   }
 
-  // ───────────────── INTRUDER LOGS ─────────────────
+  // ───────────────────────── ACTIONS ─────────────────────────
 
-  Widget _intruderSection(List<VaultItem> items) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: CyberTheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: intruderColor),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            "INTRUDER LOGS",
-            style: TextStyle(
-              color: intruderColor,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 1.5,
-            ),
+  void _addItem(String category) {
+    if (category == "File") {
+      _pickAndSaveFile();
+      return;
+    }
+
+    final title = TextEditingController();
+    final sub = TextEditingController(text: "General");
+    final content = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: CyberTheme.surface,
+        title: Text("Add $category",
+            style: const TextStyle(color: CyberTheme.neonGreen)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (category == "Note")
+              TextField(
+                  controller: sub,
+                  decoration: const InputDecoration(labelText: "Category")),
+            TextField(
+                controller: title,
+                decoration: const InputDecoration(labelText: "Title")),
+            TextField(
+                controller: content,
+                decoration: const InputDecoration(labelText: "Secret")),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Cancel")),
+          ElevatedButton(
+            onPressed: () {
+              _vaultBox.add(
+                VaultItem(
+                  username: widget.user.username,
+                  title: title.text,
+                  subCategory: sub.text,
+                  content: _encryption.encrypt(content.text),
+                  category: category,
+                  createdAt: DateTime.now(),
+                ),
+              );
+              Navigator.pop(context);
+              setState(() {});
+            },
+            child: const Text("Save"),
           ),
-          const SizedBox(height: 12),
-          ...items.map(_itemTile),
         ],
       ),
     );
   }
 
-  // ───────────────── ITEM TILE ─────────────────
+  Future<void> _pickAndSaveFile() async {
+    await Permission.storage.request();
+    final res = await FilePicker.platform.pickFiles();
+    if (res == null || res.files.single.path == null) return;
 
-  Widget _itemTile(VaultItem item) {
-    final isTrap = item.isTrap;
+    final src = File(res.files.single.path!);
+    final dir = await getApplicationDocumentsDirectory();
+    final vaultDir = Directory('${dir.path}/vault_${widget.user.username}');
+    if (!vaultDir.existsSync()) vaultDir.createSync(recursive: true);
 
-    Color c;
-    switch (item.category) {
-      case "Password":
-        c = Colors.green;
-        break;
-      case "File":
-        c = Colors.purple;
-        break;
-      case "Evidence":
-        c = intruderColor;
-        break;
-      default:
-        c = Colors.blue;
-    }
+    final newPath = '${vaultDir.path}/${res.files.single.name}';
+    await src.copy(newPath);
 
-    return ListTile(
-      leading: CircleAvatar(radius: 5, backgroundColor: c),
-      title:
-          Text(item.title, style: const TextStyle(color: Colors.white)),
-      trailing: isTrap
-          ? const Icon(Icons.warning, color: Colors.red)
-          : const Icon(Icons.chevron_right, color: Colors.grey),
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) =>
-                VaultItemDetailScreen(user: widget.user, item: item),
-          ),
-        );
-      },
+    _vaultBox.add(
+      VaultItem(
+        username: widget.user.username,
+        title: res.files.single.name,
+        content: _encryption.encrypt(newPath),
+        category: "File",
+        createdAt: DateTime.now(),
+      ),
+    );
+
+    setState(() {});
+  }
+
+  void _openFile(String enc) async {
+    final path = _encryption.decrypt(enc);
+    if (await File(path).exists()) OpenFile.open(path);
+  }
+
+  void _showEvidence(String path) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: Image.file(File(path)),
+      ),
     );
   }
-}
 
-// ───────────────── HEARTBEAT ─────────────────
-
-class HeartbeatPainter extends CustomPainter {
-  final Color color;
-  final double glowWidth;
-
-  HeartbeatPainter({required this.color, required this.glowWidth});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3
-      ..color = color
-      ..maskFilter = MaskFilter.blur(BlurStyle.outer, glowWidth * 4);
-    canvas.drawRect(Offset.zero & size, paint);
+  void _showDecrypted(String enc) {
+    final text = _encryption.decrypt(enc);
+    showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        backgroundColor: CyberTheme.surface,
+        title: const Text("Decrypted",
+            style: TextStyle(color: CyberTheme.neonGreen)),
+        content:
+        SelectableText(text, style: const TextStyle(color: Colors.white)),
+      ),
+    );
   }
-
-  @override
-  bool shouldRepaint(covariant HeartbeatPainter old) =>
-      old.glowWidth != glowWidth;
 }

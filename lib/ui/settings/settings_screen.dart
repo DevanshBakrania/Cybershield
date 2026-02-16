@@ -5,7 +5,7 @@ import '../../core/theme.dart';
 import '../../storage/hive_boxes.dart';
 import '../../models/user_model.dart';
 
-const Color cyberGreen = Color.fromARGB(255, 51, 243, 17);
+const Color cyberGreen = Color(0xFFCCFF00);
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});

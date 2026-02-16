@@ -3,7 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/routes.dart';
 import '../../core/theme.dart';
 
-const Color cyberGreen = Color.fromARGB(255, 51, 243, 17);
+const Color cyberGreen = Color(0xFFCCFF00);
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});

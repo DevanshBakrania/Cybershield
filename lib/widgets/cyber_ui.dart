@@ -71,3 +71,30 @@ class CyberNeonText extends StatelessWidget {
     );
   }
 }
+
+// ───────────────────────── ADDED: HEARTBEAT PAINTER ─────────────────────────
+
+class HeartbeatPainter extends CustomPainter {
+  final Color color;
+  final double glowWidth;
+
+  HeartbeatPainter({required this.color, required this.glowWidth});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Creates a glowing pulse effect around the edges of the screen
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = glowWidth > 0 ? glowWidth : 1.0
+      ..maskFilter = MaskFilter.blur(BlurStyle.normal, glowWidth * 2);
+
+    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
+    canvas.drawRect(rect, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant HeartbeatPainter oldDelegate) {
+    return oldDelegate.glowWidth != glowWidth || oldDelegate.color != color;
+  }
+}
