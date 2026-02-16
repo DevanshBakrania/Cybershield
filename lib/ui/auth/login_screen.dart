@@ -33,7 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
   static const Color neon = Color(0xFFCCFF00);
 
   // ─────────────────────────
-  // LOAD USER
+  // LOAD USER (NO AUTO BIOMETRIC)
   // ─────────────────────────
   Future<void> _loadUser() async {
     try {
@@ -156,7 +156,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // ─────────────────────────
-  // PANIC PIN (REGISTERED USER ONLY)
+  // PANIC PIN
   // ─────────────────────────
   void _showPanicDialog() {
     if (_user == null) return;
@@ -283,7 +283,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // ─────────────────────────
-  // METHOD UI (PATTERN FIXED)
+  // METHOD UI
   // ─────────────────────────
   List<Widget> _methodWidgets() {
     final methods = _user!.enabledAuthMethods
@@ -312,25 +312,24 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           );
 
-       case "pattern":
-  return _card(
-    Column(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: AspectRatio(
-            aspectRatio: 1,
-            child: Center(
-              child: PatternInputWidget(onComplete: _onPattern),
+        case "pattern":
+          return _card(
+            Column(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: AspectRatio(
+                    aspectRatio: 1,
+                    child: SizedBox.expand(
+                      child: PatternInputWidget(onComplete: _onPattern),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _primaryBtn("Verify Pattern", _verifyPattern),
+              ],
             ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        _primaryBtn("Verify Pattern", _verifyPattern),
-      ],
-    ),
-  );
-
+          );
 
         case "biometric":
           return _card(

@@ -8,7 +8,8 @@ class HiveBoxes {
   static late Box<UserModel> users;
   static late Box<VaultItem> vault;
   static late Box<NoteModel> dummy;
-  static late Box savedNews;
+
+
 
   static Future<void> init() async {
     await Hive.initFlutter();
@@ -25,10 +26,24 @@ class HiveBoxes {
 
     users = await Hive.openBox<UserModel>('users');
 
-    // ✅ FIXED — MUST MATCH USAGE EVERYWHERE
+    // unchanged
     vault = await Hive.openBox<VaultItem>('vault');
-
     dummy = await Hive.openBox<NoteModel>('dummy_notes');
-    savedNews = await Hive.openBox('saved_intel');
+
+    // ❌ DO NOT open saved_intel here anymore
+  }
+
+  // ✅ USER-CENTRIC SAVED INTEL (ONLY ADDITION)
+  static Future<Box> openSavedNews(String username) async {
+    final boxName = 'saved_intel_$username';
+
+    if (!Hive.isBoxOpen(boxName)) {
+      return await Hive.openBox(boxName);
+    }
+    return Hive.box(boxName);
+  }
+
+  static Box getSavedNews(String username) {
+    return Hive.box('saved_intel_$username');
   }
 }

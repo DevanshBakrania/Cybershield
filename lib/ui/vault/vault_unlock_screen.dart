@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
 import '../../core/routes.dart';
 import '../../services/biometric_service.dart';
-import '../../utils/secure_screen.dart';
 import '../auth/auth_hash.dart';
 import '../auth/pattern_input_widget.dart';
 import 'vault_screen.dart';
@@ -27,19 +26,32 @@ class _VaultUnlockScreenState extends State<VaultUnlockScreen> {
 
   static const Color highlight = Color(0xFFCCFF00); // neon / lime green
 
-  // 🔐 SCREENSHOT PROTECTION
+ 
   @override
   void initState() {
     super.initState();
-    SecureScreen.enable();
+    _tryBiometric(); // ✅ ADDED
   }
 
   @override
   void dispose() {
     pinCtrl.dispose();
     passCtrl.dispose();
-    SecureScreen.disable();
     super.dispose();
+  }
+
+  // 🔐 AUTO BIOMETRIC (ADDED – NOTHING ELSE)
+  Future<void> _tryBiometric() async {
+    if (!widget.user.vaultAuthMethods.contains("biometric")) return;
+
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    final ok = await bio.authenticate();
+    if (!mounted) return;
+
+    if (ok) {
+      _success("biometric");
+    }
   }
 
   // ─────────────────────────
@@ -179,7 +191,7 @@ class _VaultUnlockScreenState extends State<VaultUnlockScreen> {
   }
 
   // ─────────────────────────
-  // BUILD
+  // BUILD (UNCHANGED)
   // ─────────────────────────
   @override
   Widget build(BuildContext context) {

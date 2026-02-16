@@ -39,17 +39,22 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadUser();
   }
 
-  void _loadUser() {
+  void _loadUser() async {
     try {
       final user = HiveBoxes.users.values.firstWhere(
         (u) => u.username == widget.username,
       );
 
       _user = user;
+      await HiveBoxes.openSavedNews(_user!.username);
 
+      // ✅ FIX: Pass username to SecurityFeedScreen
       _screens = [
         const DashboardScreen(),
-        const SecurityFeedScreen(),
+
+        SecurityFeedScreen(
+          username: _user!.username,
+        ),
 
         // 🔐 VAULT FLOW HANDLED INTERNALLY
         VaultEntryRouter(
