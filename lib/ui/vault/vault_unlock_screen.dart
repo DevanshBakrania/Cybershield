@@ -7,9 +7,12 @@ import '../auth/auth_hash.dart';
 import '../auth/pattern_input_widget.dart';
 import 'vault_screen.dart';
 
+// 🔥 ADDED: Import the intruder service
+import '../../services/intruder_capture_service.dart';
+
 class VaultUnlockScreen extends StatefulWidget {
   final UserModel user;
-  
+
   const VaultUnlockScreen({super.key, required this.user});
 
   @override
@@ -90,7 +93,7 @@ class _VaultUnlockScreenState extends State<VaultUnlockScreen> {
   }
 
   // ─────────────────────────
-  // SUCCESS / FAIL (UNCHANGED)
+  // SUCCESS / FAIL
   // ─────────────────────────
   void _success(String m) {
     verified.add(m);
@@ -111,15 +114,20 @@ class _VaultUnlockScreenState extends State<VaultUnlockScreen> {
   }
 
   void _fail() {
-    attempts++;
+    attempts++; // Increment the attempt counter first
+
     if (attempts >= 2) {
+      // 🔥 2nd Failed Attempt: Fire the camera AND redirect to dummy screen
+      IntruderTrapService.capture(widget.user.username);
+
       Navigator.pushReplacementNamed(
         context,
         AppRoutes.dummy,
         arguments: widget.user.username,
       );
     } else {
-      _msg("Invalid authentication", Colors.red);
+      // 🔥 1st Failed Attempt: Show the warning message (No camera yet)
+      _msg("Invalid authentication (1 attempt remaining)", Colors.red);
     }
   }
 
@@ -162,7 +170,7 @@ class _VaultUnlockScreenState extends State<VaultUnlockScreen> {
     return Row(
       children: List.generate(
         2,
-        (i) => Expanded(
+            (i) => Expanded(
           child: Container(
             height: 6,
             margin: const EdgeInsets.symmetric(horizontal: 4),
@@ -243,27 +251,27 @@ class _VaultUnlockScreenState extends State<VaultUnlockScreen> {
                       ),
                       const SizedBox(height: 12),
                       _btn("Verify Password",
-                          () => _verify("password")),
+                              () => _verify("password")),
                     ],
                   ),
                 )
               else if (m == "pattern")
-                _card(
-                  child: Column(
-                    children: [
-                      PatternInputWidget(onComplete: _onPattern),
-                      const SizedBox(height: 8),
-                      _btn("Verify Pattern", _verifyPattern),
-                    ],
-                  ),
-                )
-              else if (m == "biometric")
-                _card(
-                  child: _btn(
-                    "Use Biometric",
-                    () => _verify("biometric"),
-                  ),
-                ),
+                  _card(
+                    child: Column(
+                      children: [
+                        PatternInputWidget(onComplete: _onPattern),
+                        const SizedBox(height: 8),
+                        _btn("Verify Pattern", _verifyPattern),
+                      ],
+                    ),
+                  )
+                else if (m == "biometric")
+                    _card(
+                      child: _btn(
+                        "Use Biometric",
+                            () => _verify("biometric"),
+                      ),
+                    ),
           ],
         ),
       ),

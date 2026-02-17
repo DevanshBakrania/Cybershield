@@ -433,14 +433,38 @@ class _VaultScreenState extends State<VaultScreen>
     if (await File(path).exists()) OpenFile.open(path);
   }
 
-  void _showEvidence(String path) {
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        backgroundColor: Colors.transparent,
-        child: Image.file(File(path)),
-      ),
-    );
+  void _showEvidence(String encPath) {
+    try {
+      // Decrypt and trim any accidental invisible spaces
+      final decryptedPath = _encryption.decrypt(encPath).trim();
+      final imageFile = File(decryptedPath);
+
+      debugPrint("📸 Looking for image at: ${imageFile.path}");
+      debugPrint("📸 Does file exist? ${imageFile.existsSync()}");
+
+      showDialog(
+        context: context,
+        builder: (_) => Dialog(
+          backgroundColor: Colors.transparent,
+          child: Image.file(
+            imageFile,
+            errorBuilder: (context, error, stackTrace) {
+              return Container(
+                padding: const EdgeInsets.all(16),
+                color: Colors.black87,
+                child: Text(
+                  "Image missing from device storage.\nPath: ${imageFile.path}",
+                  style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint("Error showing evidence: $e");
+    }
   }
 
   void _showDecrypted(String enc) {

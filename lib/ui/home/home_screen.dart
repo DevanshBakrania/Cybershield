@@ -9,6 +9,7 @@ import '../dashboard/dashboard_screen.dart';
 import '../feed/security_feed_screen.dart';
 import '../settings/settings_screen.dart';
 import '../vault/vault_entry_router.dart';
+import '../../services/intruder_capture_service.dart';
 
 /// 🔐 GLOBAL VAULT LOCK SIGNAL
 final ValueNotifier<bool> vaultLockNotifier = ValueNotifier(false);
@@ -46,6 +47,8 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       _user = user;
+
+      IntruderTrapService.init(_user!.username);
 
       _screens = [
         const DashboardScreen(),
