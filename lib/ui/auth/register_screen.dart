@@ -197,7 +197,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             ),
 
           if (usePattern) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: 9),
             const Text(
               "Draw Pattern",
               style: TextStyle(color: Colors.white70),

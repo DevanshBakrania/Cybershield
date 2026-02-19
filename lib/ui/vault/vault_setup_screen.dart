@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/user_model.dart';
-import '../../utils/secure_screen.dart';
+
 import '../auth/pattern_input_widget.dart';
 import '../auth/auth_hash.dart';
 import 'vault_unlock_screen.dart';
@@ -29,14 +29,11 @@ class _VaultSetupScreenState extends State<VaultSetupScreen> {
   @override
   void initState() {
     super.initState();
-    SecureScreen.enable();
   }
 
   @override
   void dispose() {
     pinCtrl.dispose();
-    passCtrl.dispose();
-    SecureScreen.disable();
     super.dispose();
   }
 
@@ -130,9 +127,9 @@ class _VaultSetupScreenState extends State<VaultSetupScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         backgroundColor: Colors.black,
         elevation: 0,
-        leading: const BackButton(), // ← back to previous
         title: const Text("Vault Setup"),
       ),
       body: ListView(

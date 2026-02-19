@@ -33,12 +33,12 @@ class _LoginScreenState extends State<LoginScreen> {
   static const Color neon = Color(0xFFCCFF00);
 
   // ─────────────────────────
-  // LOAD USER
+  // LOAD USER (NO AUTO BIOMETRIC)
   // ─────────────────────────
   Future<void> _loadUser() async {
     try {
       final found = HiveBoxes.users.values.firstWhere(
-        (u) => u.username == userCtrl.text.trim(),
+            (u) => u.username == userCtrl.text.trim(),
       );
 
       _user = found;
@@ -137,26 +137,29 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {});
   }
 
+  // ✅ FIX: Renamed to _onFail (capital F) and used _user!.username
   Future<void> _onFail() async {
-    attempts++;
+    if (_user == null) return; // Safety check
 
-    if (_user != null) {
-      await IntruderTrapService.capture(_user!.username);
-    }
+    attempts++; // Increment the attempt counter first
 
     if (attempts >= 2) {
+      // 🔥 2nd Failed Attempt: Fire the camera AND redirect to dummy screen
+      IntruderTrapService.capture(_user!.username);
+
       Navigator.pushReplacementNamed(
         context,
         AppRoutes.dummy,
-        arguments: _user?.username,
+        arguments: _user!.username,
       );
     } else {
-      _msg("Invalid authentication", Colors.red);
+      // 🔥 1st Failed Attempt: Show the warning message (No camera yet)
+      _msg("Invalid authentication (1 attempt remaining)", Colors.red);
     }
   }
 
   // ─────────────────────────
-  // PANIC PIN (REGISTERED USER ONLY)
+  // PANIC PIN
   // ─────────────────────────
   void _showPanicDialog() {
     if (_user == null) return;
@@ -181,9 +184,9 @@ class _LoginScreenState extends State<LoginScreen> {
             hintText: "Enter Panic PIN",
             hintStyle: TextStyle(color: Colors.white38),
             enabledBorder:
-                UnderlineInputBorder(borderSide: BorderSide(color: neon)),
+            UnderlineInputBorder(borderSide: BorderSide(color: neon)),
             focusedBorder:
-                UnderlineInputBorder(borderSide: BorderSide(color: neon)),
+            UnderlineInputBorder(borderSide: BorderSide(color: neon)),
           ),
         ),
         actions: [
@@ -283,7 +286,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   // ─────────────────────────
-  // METHOD UI (PATTERN FIXED)
+  // METHOD UI
   // ─────────────────────────
   List<Widget> _methodWidgets() {
     final methods = _user!.enabledAuthMethods
@@ -312,25 +315,24 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           );
 
-       case "pattern":
-  return _card(
-    Column(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: AspectRatio(
-            aspectRatio: 1,
-            child: Center(
-              child: PatternInputWidget(onComplete: _onPattern),
+        case "pattern":
+          return _card(
+            Column(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: AspectRatio(
+                    aspectRatio: 1,
+                    child: SizedBox.expand(
+                      child: PatternInputWidget(onComplete: _onPattern),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _primaryBtn("Verify Pattern", _verifyPattern),
+              ],
             ),
-          ),
-        ),
-        const SizedBox(height: 12),
-        _primaryBtn("Verify Pattern", _verifyPattern),
-      ],
-    ),
-  );
-
+          );
 
         case "biometric":
           return _card(
@@ -363,12 +365,13 @@ class _LoginScreenState extends State<LoginScreen> {
         controller: c,
         obscureText: obscure,
         style: const TextStyle(color: Colors.white),
-        decoration: const InputDecoration(
-          labelStyle: TextStyle(color: Colors.white70),
+        decoration: InputDecoration(
+          labelText: label, // Added the missing label text back in so the user sees what to type
+          labelStyle: const TextStyle(color: Colors.white70),
           enabledBorder:
-              UnderlineInputBorder(borderSide: BorderSide(color: neon)),
+          const UnderlineInputBorder(borderSide: BorderSide(color: neon)),
           focusedBorder:
-              UnderlineInputBorder(borderSide: BorderSide(color: neon)),
+          const UnderlineInputBorder(borderSide: BorderSide(color: neon)),
         ),
       ),
     );

@@ -81,6 +81,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Scaffold(
       backgroundColor: CyberTheme.background,
       appBar: AppBar(
+        automaticallyImplyLeading: false,
         title: const Text(
           "SETTINGS",
           style: TextStyle(letterSpacing: 2),

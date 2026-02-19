@@ -4,9 +4,19 @@ import 'package:flutter/services.dart';
 class BiometricService {
   final LocalAuthentication auth = LocalAuthentication();
 
+  Future<bool> isAvailable() async {
+    try {
+      return await auth.canCheckBiometrics &&
+          await auth.isDeviceSupported();
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<bool> authenticate() async {
-    // Check if hardware is available
-    final bool canCheck = await auth.canCheckBiometrics || await auth.isDeviceSupported();
+    final bool canCheck =
+        await auth.canCheckBiometrics ||
+        await auth.isDeviceSupported();
 
     if (!canCheck) return false;
 
@@ -19,7 +29,7 @@ class BiometricService {
           useErrorDialogs: true,
         ),
       );
-    } on PlatformException catch (_) {
+    } on PlatformException {
       return false;
     }
   }

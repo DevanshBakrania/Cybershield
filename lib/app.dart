@@ -47,7 +47,7 @@ class CyberShieldApp extends StatelessWidget {
 
             AppRoutes.hardware: (_) => const HardwareScreen(),
             AppRoutes.network: (_) => const NetworkScreen(),
-            AppRoutes.feed: (_) => const SecurityFeedScreen(),
+            
 
             AppRoutes.settings: (_) => const SettingsScreen(),
             AppRoutes.dummy: (_) => const DummyNotesScreen(),
@@ -62,9 +62,13 @@ class CyberShieldApp extends StatelessWidget {
                   builder: (_) => HomeScreen(username: username),
                 );
 
-              // 🚫 DO NOT ROUTE TO VAULT DIRECTLY
-              // Vault is part of HomeScreen tabs
-
+              case AppRoutes.feed:
+                final username = settings.arguments as String;
+                return MaterialPageRoute(
+                  builder: (_) => SecurityFeedScreen(
+                    username: username,
+                  ),
+                );
               default:
                 return null;
             }

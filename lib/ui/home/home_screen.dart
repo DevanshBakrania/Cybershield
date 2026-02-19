@@ -9,6 +9,8 @@ import '../dashboard/dashboard_screen.dart';
 import '../feed/security_feed_screen.dart';
 import '../settings/settings_screen.dart';
 import '../vault/vault_entry_router.dart';
+
+// 🔥 ADDED BACK: Import the intruder service
 import '../../services/intruder_capture_service.dart';
 
 /// 🔐 GLOBAL VAULT LOCK SIGNAL
@@ -40,30 +42,35 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadUser();
   }
 
-  void _loadUser() {
+  // 🔥 CHANGED: Made this method 'async' to support your teammate's new code
+  Future<void> _loadUser() async {
     try {
+      // 1. Find the user first
       final user = HiveBoxes.users.values.firstWhere(
-        (u) => u.username == widget.username,
+            (u) => u.username == widget.username,
       );
 
-      _user = user;
+      // 2. Do the async loading steps BEFORE assigning _user
+      await HiveBoxes.openSavedNews(user.username);
+      IntruderTrapService.init(user.username);
 
-      IntruderTrapService.init(_user!.username);
-
+      // 3. Initialize screens
       _screens = [
         const DashboardScreen(),
-        const SecurityFeedScreen(),
-
-        // 🔐 VAULT FLOW HANDLED INTERNALLY
+        SecurityFeedScreen(
+          username: user.username,
+        ),
         VaultEntryRouter(
-          user: _user!,
+          user: user,
           vaultLockNotifier: vaultLockNotifier,
         ),
-
         const SettingsScreen(),
       ];
 
+      // 4. FINALLY, assign _user and trigger the UI rebuild
+      _user = user;
       setState(() {});
+
     } catch (e) {
       debugPrint("❌ HomeScreen user load failed: $e");
     }
@@ -103,7 +110,8 @@ class _HomeScreenState extends State<HomeScreen> {
         decoration: BoxDecoration(
           border: Border(
             top: BorderSide(
-              color: cyberGreen.withOpacity(0.2),
+              // ✅ FIX: Updated from deprecated 'withOpacity' to 'withValues'
+              color: cyberGreen.withValues(alpha: 0.2),
             ),
           ),
           color: CyberTheme.background,
@@ -139,10 +147,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ).animate().slideY(
-            begin: 1,
-            duration: 500.ms,
-            curve: Curves.easeOut,
-          ),
+        begin: 1,
+        duration: 500.ms,
+        curve: Curves.easeOut,
+      ),
     );
   }
 }
