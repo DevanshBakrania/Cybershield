@@ -5,11 +5,12 @@ import 'package:flutter/material.dart';
 class NewsItem {
   final String title;
   final String link;
-  final String date; // Display date e.g. "Mon, 03 Feb"
-  final DateTime parsedDate; // For sorting
+  final String date;
+  final DateTime parsedDate;
   final String source;
+  final String category; // ✨ NEW: Tracks the feed category
   final List<String> tags;
-  final bool isCritical; // NEW: Determines Red Card
+  final bool isCritical;
 
   NewsItem({
     required this.title,
@@ -17,30 +18,31 @@ class NewsItem {
     required this.date,
     required this.parsedDate,
     required this.source,
+    required this.category, // ✨ NEW
     required this.tags,
     this.isCritical = false,
   });
 
-  // Helper to save to Database
   Map<String, dynamic> toMap() {
     return {
       'title': title,
       'link': link,
       'date': date,
       'source': source,
+      'category': category, // ✨ NEW
       'tags': tags,
       'isCritical': isCritical,
     };
   }
 
-  // Helper to load from Database
   factory NewsItem.fromMap(Map<dynamic, dynamic> map) {
     return NewsItem(
       title: map['title'],
       link: map['link'],
       date: map['date'],
-      parsedDate: DateTime.now(), // Fallback for saved items
+      parsedDate: DateTime.now(),
       source: map['source'],
+      category: map['category'] ?? 'General Intel', // ✨ NEW: Fallback for older items
       tags: List<String>.from(map['tags']),
       isCritical: map['isCritical'] ?? false,
     );
@@ -48,7 +50,6 @@ class NewsItem {
 }
 
 class NewsService {
-  // 🌍 MASTER FEED LIST
   static const Map<String, List<String>> _feedCategories = {
     "Threat Intel": [
       "https://feeds.feedburner.com/TheHackersNews",
@@ -80,139 +81,107 @@ class NewsService {
     ],
   };
 
-  // 🚨 Critical Keywords (Triggers Red Border)
   final List<String> _criticalWords = [
     "Zero-Day", "0-Day", "Critical", "Ransomware", "Exploit",
     "Breach", "Active Attack", "Unpatched", "RCE"
   ];
 
-  // 🏷️ General Tags (For badges)
   final List<String> _keywords = [
     "Android", "iOS", "Malware", "Phishing", "Trojan",
     "Spyware", "Linux", "Windows", "WebView", "Bluetooth",
     "Crypto", "Banking", "Botnet", "CVE"
   ];
 
-  /// Fetches threats.
-  /// Note: The booleans (showTHN, etc.) are kept for backward compatibility
-  /// with your UI, but we map them to our broader categories.
   Future<List<NewsItem>> getThreats({
-    bool showTHN = true, // Maps to Threat Intel
-    bool showWired = true, // Maps to Exploits/Malware
-    bool showCisa = true, // Maps to Vulns/Mobile
+    bool showTHN = true,
+    bool showWired = true,
+    bool showCisa = true,
   }) async {
     List<NewsItem> allNews = [];
     List<Future> tasks = [];
 
-    // 1. Build list of URLs to fetch based on filters
-    // We select the best 2-3 sources from each category to prevent timeouts
+    // ✨ NEW: Passing the exact category name to group them by
     if (showTHN) {
-      tasks.add(_fetchFeed(_feedCategories["Threat Intel"]![0], "THN", allNews));
-      tasks.add(_fetchFeed(_feedCategories["Threat Intel"]![1], "KREBS", allNews));
-      tasks.add(_fetchFeed(_feedCategories["Threat Intel"]![3], "UNIT42", allNews));
+      tasks.add(_fetchFeed(_feedCategories["Threat Intel"]![0], "THN", "Threat Intel", allNews));
+      tasks.add(_fetchFeed(_feedCategories["Threat Intel"]![1], "KREBS", "Threat Intel", allNews));
+      tasks.add(_fetchFeed(_feedCategories["Threat Intel"]![3], "UNIT42", "Threat Intel", allNews));
     }
 
     if (showWired) {
-      tasks.add(_fetchFeed(_feedCategories["Malware"]![0], "BLEEPING", allNews));
-      tasks.add(_fetchFeed(_feedCategories["Exploits"]![0], "DB-EXPLOIT", allNews));
-      tasks.add(_fetchFeed(_feedCategories["Exploits"]![2], "ZDI", allNews));
+      tasks.add(_fetchFeed(_feedCategories["Malware"]![0], "BLEEPING", "Exploits & Malware", allNews));
+      tasks.add(_fetchFeed(_feedCategories["Exploits"]![0], "DB-EXPLOIT", "Exploits & Malware", allNews));
+      tasks.add(_fetchFeed(_feedCategories["Exploits"]![2], "ZDI", "Exploits & Malware", allNews));
     }
 
     if (showCisa) {
-      tasks.add(_fetchFeed(_feedCategories["Vulnerabilities"]![0], "CISA", allNews));
-      tasks.add(_fetchFeed(_feedCategories["Mobile"]![0], "PROJECT0", allNews));
-      tasks.add(_fetchFeed(_feedCategories["Mobile"]![1], "ZIMPERIUM", allNews));
+      tasks.add(_fetchFeed(_feedCategories["Vulnerabilities"]![0], "CISA", "Vulns & Mobile", allNews));
+      tasks.add(_fetchFeed(_feedCategories["Mobile"]![0], "PROJECT0", "Vulns & Mobile", allNews));
+      tasks.add(_fetchFeed(_feedCategories["Mobile"]![1], "ZIMPERIUM", "Vulns & Mobile", allNews));
     }
 
-    // 2. Execute all fetches in parallel
     await Future.wait(tasks);
-
-    // 3. Sort by Date (Newest First)
-    // We use the parsedDate field for accurate sorting
-    allNews.sort((a, b) => b.parsedDate.compareTo(a.parsedDate));
-
     return allNews;
   }
 
-  Future<void> _fetchFeed(String url, String sourceName, List<NewsItem> targetList) async {
+  // ✨ NEW: Added categoryName parameter
+  Future<void> _fetchFeed(String url, String sourceName, String categoryName, List<NewsItem> targetList) async {
     try {
-      // FIX: Full Browser Headers to bypass Firewall (Error 403)
       final response = await http.get(
         Uri.parse(url),
         headers: {
           "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
           "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
         },
-      ).timeout(const Duration(seconds: 6)); // Timeout to prevent hanging
+      ).timeout(const Duration(seconds: 6));
 
       if (response.statusCode == 200) {
         final document = XmlDocument.parse(response.body);
-
-        // Handle both RSS <item> and Atom <entry>
         var items = document.findAllElements('item');
-        if (items.isEmpty) {
-          items = document.findAllElements('entry');
-        }
+        if (items.isEmpty) items = document.findAllElements('entry');
 
-        // Limit to 10 items per source for faster loading
         for (var node in items.take(10)) {
           String title = node.findElements('title').isNotEmpty ? node.findElements('title').single.text : "Unknown Title";
           String link = "";
 
-          // Link parsing (Handle Atom vs RSS)
           if (node.findElements('link').isNotEmpty) {
             var linkNode = node.findElements('link').first;
-            // Atom feeds often have <link href="..." />
             link = linkNode.getAttribute('href') ?? linkNode.text;
           }
 
-          // Date Parsing
           String pubDateString = "";
-          if (node.findElements('pubDate').isNotEmpty) {
-            pubDateString = node.findElements('pubDate').single.text;
-          } else if (node.findElements('updated').isNotEmpty) {
-            pubDateString = node.findElements('updated').single.text;
-          } else if (node.findElements('dc:date').isNotEmpty) {
-            pubDateString = node.findElements('dc:date').single.text;
+          if (node.findElements('pubDate').isNotEmpty) pubDateString = node.findElements('pubDate').single.text;
+          else if (node.findElements('updated').isNotEmpty) pubDateString = node.findElements('updated').single.text;
+          else if (node.findElements('dc:date').isNotEmpty) pubDateString = node.findElements('dc:date').single.text;
+
+          DateTime parsedDate = _parseFlexibleDate(pubDateString);
+
+          final now = DateTime.now();
+          final difference = DateTime(now.year, now.month, now.day).difference(DateTime(parsedDate.year, parsedDate.month, parsedDate.day)).inDays;
+
+          String displayDate;
+          if (difference == 0) {
+            displayDate = "Today";
+          } else if (difference == 1) {
+            displayDate = "Yesterday";
+          } else {
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            displayDate = "${months[parsedDate.month - 1]} ${parsedDate.day.toString().padLeft(2, '0')}, ${parsedDate.year}";
           }
 
-          // Parse Date for Sorting
-          DateTime parsedDate = DateTime.now();
-          try {
-            parsedDate = _parseFlexibleDate(pubDateString);
-          } catch (e) {
-            // Keep default now() if parsing fails
-          }
-
-          // Clean Date String for Display (e.g., "Tue, 04 Feb")
-          String displayDate = pubDateString;
-          if (displayDate.length > 16) {
-            // Basic cleanup for RSS standard format
-            displayDate = displayDate.substring(0, 11);
-          }
-
-          // Logic: Auto-Tagging & Severity
           List<String> detectedTags = [];
           bool critical = false;
 
-          // Check Critical
           for (var word in _criticalWords) {
             if (title.toLowerCase().contains(word.toLowerCase())) {
               critical = true;
               detectedTags.add(word.toUpperCase());
             }
           }
-          // Check General Tags
           for (var word in _keywords) {
-            if (title.toLowerCase().contains(word.toLowerCase())) {
-              detectedTags.add(word.toUpperCase());
-            }
+            if (title.toLowerCase().contains(word.toLowerCase())) detectedTags.add(word.toUpperCase());
           }
 
-          // Source Tag
-          if (sourceName == "CISA" || sourceName == "DB-EXPLOIT") {
-            detectedTags.add(sourceName);
-          }
+          if (sourceName == "CISA" || sourceName == "DB-EXPLOIT") detectedTags.add(sourceName);
 
           if (title.isNotEmpty && link.isNotEmpty) {
             targetList.add(NewsItem(
@@ -221,7 +190,8 @@ class NewsService {
               date: displayDate,
               parsedDate: parsedDate,
               source: sourceName,
-              tags: detectedTags.toSet().toList(), // Remove duplicates
+              category: categoryName, // ✨ NEW: Saving the category here
+              tags: detectedTags.toSet().toList(),
               isCritical: critical,
             ));
           }
@@ -234,16 +204,12 @@ class NewsService {
     }
   }
 
-  // Improved Date Parser to handle multiple RSS/Atom formats
   DateTime _parseFlexibleDate(String dateStr) {
     if (dateStr.isEmpty) return DateTime.now();
     try {
-      // 1. Try ISO 8601 (Atom) - e.g. 2023-10-05T14:30:00Z
       return DateTime.parse(dateStr);
     } catch (_) {
       try {
-        // 2. Try RFC 1123 (RSS) - e.g. Mon, 03 Feb 2026 12:00:00 GMT
-        // We manually parse the parts because HttpDate can be strict
         var parts = dateStr.split(' ');
         if (parts.length >= 4) {
           int day = int.parse(parts[1]);

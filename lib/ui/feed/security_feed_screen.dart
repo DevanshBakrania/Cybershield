@@ -46,7 +46,6 @@ class _SecurityFeedScreenState extends State<SecurityFeedScreen>
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(_handleTabChange);
 
-    // ✅ USER-SCOPED BOX
     _savedNewsBox = HiveBoxes.getSavedNews(widget.username);
 
     _loadLiveNews();
@@ -97,16 +96,32 @@ class _SecurityFeedScreenState extends State<SecurityFeedScreen>
 
   void _updateDisplayList() {
     final source =
-        _tabController.index == 0 ? _liveNews : _savedNews;
+    _tabController.index == 0 ? _liveNews : _savedNews;
 
     if (_searchQuery.isEmpty) {
       _displayList = List.from(source);
     } else {
       _displayList = source
           .where((item) =>
-              item.title.toLowerCase().contains(_searchQuery.toLowerCase()))
+          item.title.toLowerCase().contains(_searchQuery.toLowerCase()))
           .toList();
     }
+
+    // ✨ NEW: Sort by Category first, then Newest Date
+    _displayList.sort((a, b) {
+      // Custom weighting so Threat Intel is always at the top
+      int getWeight(String cat) {
+        if (cat == "Threat Intel") return 1;
+        if (cat == "Exploits & Malware") return 2;
+        if (cat == "Vulns & Mobile") return 3;
+        return 4;
+      }
+
+      int catCompare = getWeight(a.category).compareTo(getWeight(b.category));
+      if (catCompare != 0) return catCompare;
+
+      return b.parsedDate.compareTo(a.parsedDate);
+    });
   }
 
   // ---------------- ACTIONS ----------------
@@ -118,7 +133,7 @@ class _SecurityFeedScreenState extends State<SecurityFeedScreen>
 
   void _toggleBookmark(NewsItem item) {
     final existingKey = _savedNewsBox.keys.firstWhere(
-      (k) => _savedNewsBox.get(k)?['title'] == item.title,
+          (k) => _savedNewsBox.get(k)?['title'] == item.title,
       orElse: () => null,
     );
 
@@ -189,17 +204,17 @@ class _SecurityFeedScreenState extends State<SecurityFeedScreen>
               _buildFilterSwitch(
                 "Threat Intel (THN, Krebs, Unit42)",
                 _filterTHN,
-                (v) => setSheetState(() => _filterTHN = v),
+                    (v) => setSheetState(() => _filterTHN = v),
               ),
               _buildFilterSwitch(
                 "Exploits & Malware (DB, Bleeping)",
                 _filterWired,
-                (v) => setSheetState(() => _filterWired = v),
+                    (v) => setSheetState(() => _filterWired = v),
               ),
               _buildFilterSwitch(
                 "Vulns & Mobile (CISA, NVD)",
                 _filterCisa,
-                (v) => setSheetState(() => _filterCisa = v),
+                    (v) => setSheetState(() => _filterCisa = v),
               ),
               const SizedBox(height: 20),
               SizedBox(
@@ -227,10 +242,10 @@ class _SecurityFeedScreenState extends State<SecurityFeedScreen>
   }
 
   Widget _buildFilterSwitch(
-    String title,
-    bool isActive,
-    Function(bool) onChanged,
-  ) {
+      String title,
+      bool isActive,
+      Function(bool) onChanged,
+      ) {
     return ListTile(
       contentPadding: EdgeInsets.zero,
       title: Text(
@@ -308,34 +323,35 @@ class _SecurityFeedScreenState extends State<SecurityFeedScreen>
           Expanded(
             child: _isLoading && _tabController.index == 0
                 ? const Center(
-                    child: CircularProgressIndicator(
-                        color: CyberTheme.neonGreen))
+                child: CircularProgressIndicator(color: CyberTheme.neonGreen))
                 : _displayList.isEmpty
-                    ? Center(
-                        child: Text(
-                          _tabController.index == 0
-                              ? "No Connection"
-                              : "No Saved Intel",
-                          style:
-                              const TextStyle(color: Colors.grey),
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16),
-                        itemCount: _displayList.length,
-                        itemBuilder: (ctx, i) {
-                          final item = _displayList[i];
-                          return Column(
-                            children: [
-                              item.isCritical
-                                  ? _buildHeroCard(item)
-                                  : _buildStandardCard(item),
-                              const SizedBox(height: 16),
-                            ],
-                          );
-                        },
-                      ),
+                ? Center(
+              child: Text(
+                _tabController.index == 0 ? "No Connection" : "No Saved Intel",
+                style: const TextStyle(color: Colors.grey),
+              ),
+            )
+                : ListView.builder(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: _displayList.length,
+              itemBuilder: (ctx, i) {
+                final item = _displayList[i];
+
+                // ✨ NEW: Check if this is the first item of a NEW Category
+                final bool isFirst = i == 0;
+                final bool isNewCategory = isFirst || item.category != _displayList[i - 1].category;
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (isNewCategory) _buildCategoryHeader(item.category),
+
+                    item.isCritical ? _buildHeroCard(item) : _buildStandardCard(item),
+                    const SizedBox(height: 16),
+                  ],
+                );
+              },
+            ),
           ),
         ],
       ),
@@ -354,16 +370,14 @@ class _SecurityFeedScreenState extends State<SecurityFeedScreen>
         decoration: BoxDecoration(
           color: CyberTheme.surface,
           borderRadius: BorderRadius.circular(16),
-          border:
-              Border.all(color: CyberTheme.dangerRed, width: 1.5),
+          border: Border.all(color: CyberTheme.dangerRed, width: 1.5),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                const Icon(Icons.warning_amber_rounded,
-                    color: CyberTheme.dangerRed),
+                const Icon(Icons.warning_amber_rounded, color: CyberTheme.dangerRed),
                 const SizedBox(width: 8),
                 const Text(
                   "CRITICAL THREAT",
@@ -374,12 +388,8 @@ class _SecurityFeedScreenState extends State<SecurityFeedScreen>
                 const Spacer(),
                 IconButton(
                   icon: Icon(
-                    isSaved
-                        ? Icons.bookmark
-                        : Icons.bookmark_border,
-                    color: isSaved
-                        ? CyberTheme.neonGreen
-                        : Colors.grey,
+                    isSaved ? Icons.bookmark : Icons.bookmark_border,
+                    color: isSaved ? CyberTheme.neonGreen : Colors.grey,
                   ),
                   onPressed: () => _toggleBookmark(item),
                 ),
@@ -392,6 +402,31 @@ class _SecurityFeedScreenState extends State<SecurityFeedScreen>
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
                   fontSize: 18),
+            ),
+            const SizedBox(height: 16),
+            // ✨ NEW: Row containing both the badge and the date
+            // ✨ UPDATED: Row containing the source, dynamic tags, and date
+            Row(
+              children: [
+                _buildSourceBadge(item.source),
+                const SizedBox(width: 8),
+
+                // This displays all detected tags (Ransomware, Malware, etc.)
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: item.tags.map((tag) => _buildThreatTag(tag)).toList(),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 8),
+                Text(
+                  item.date,
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+              ],
             ),
           ],
         ),
@@ -411,27 +446,132 @@ class _SecurityFeedScreenState extends State<SecurityFeedScreen>
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: Colors.white10),
         ),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              child: Text(
-                item.title,
-                style: const TextStyle(color: Colors.white),
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    item.title,
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(
+                    isSaved ? Icons.bookmark : Icons.bookmark_border,
+                    color: isSaved ? CyberTheme.neonGreen : Colors.grey,
+                  ),
+                  onPressed: () => _toggleBookmark(item),
+                ),
+              ],
             ),
-            IconButton(
-              icon: Icon(
-                isSaved
-                    ? Icons.bookmark
-                    : Icons.bookmark_border,
-                color:
-                    isSaved ? CyberTheme.neonGreen : Colors.grey,
-              ),
-              onPressed: () => _toggleBookmark(item),
+            const SizedBox(height: 12),
+            // ✨ NEW: Row containing both the badge and the date
+            // ✨ UPDATED: Row containing the source, dynamic tags, and date
+            Row(
+              children: [
+                _buildSourceBadge(item.source),
+                const SizedBox(width: 8),
+
+                // This displays all detected tags (Ransomware, Malware, etc.)
+                Expanded(
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: item.tags.map((tag) => _buildThreatTag(tag)).toList(),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(width: 8),
+                Text(
+                  item.date,
+                  style: const TextStyle(color: Colors.white38, fontSize: 12),
+                ),
+              ],
             ),
           ],
         ),
       ),
     );
   }
+
+  // ✨ NEW: Category Header Widget
+  Widget _buildCategoryHeader(String category) {
+    IconData icon;
+    if (category == "Threat Intel") icon = Icons.radar;
+    else if (category == "Exploits & Malware") icon = Icons.bug_report;
+    else if (category == "Vulns & Mobile") icon = Icons.security_update_warning;
+    else icon = Icons.article;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 24, bottom: 16),
+      child: Row(
+        children: [
+          Icon(icon, color: CyberTheme.neonGreen, size: 22),
+          const SizedBox(width: 8),
+          Text(
+            category.toUpperCase(),
+            style: const TextStyle(
+              color: CyberTheme.neonGreen,
+              fontWeight: FontWeight.bold,
+              fontSize: 16,
+              letterSpacing: 2,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Divider(color: CyberTheme.neonGreen.withValues(alpha: 0.3), thickness: 1),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Widget _buildSourceBadge(String source) {
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+    decoration: BoxDecoration(
+      color: CyberTheme.neonGreen.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(6),
+      border: Border.all(color: CyberTheme.neonGreen.withValues(alpha: 0.4), width: 1),
+    ),
+    child: Text(
+      source.toUpperCase(),
+      style: const TextStyle(
+        color: CyberTheme.neonGreen,
+        fontWeight: FontWeight.bold,
+        fontSize: 10,
+        letterSpacing: 1,
+      ),
+    ),
+  );
+}
+
+// ✨ NEW: Dynamic Threat Tags (e.g., RANSOMWARE, MALWARE, ZERO-DAY)
+Widget _buildThreatTag(String tag) {
+  // Make critical tags like Ransomware or Zero-Day pop with red/orange
+  final bool isCriticalTag = ["ZERO-DAY", "0-DAY", "RANSOMWARE", "EXPLOIT", "BREACH"].contains(tag.toUpperCase());
+  final Color tagColor = isCriticalTag ? CyberTheme.dangerRed : Colors.white54;
+
+  return Container(
+    margin: const EdgeInsets.only(right: 6),
+    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+    decoration: BoxDecoration(
+      color: tagColor.withValues(alpha: 0.1),
+      borderRadius: BorderRadius.circular(4),
+      border: Border.all(color: tagColor.withValues(alpha: 0.5), width: 1),
+    ),
+    child: Text(
+      tag.toUpperCase(),
+      style: TextStyle(
+        color: tagColor,
+        fontWeight: FontWeight.bold,
+        fontSize: 9,
+        letterSpacing: 1,
+      ),
+    ),
+  );
 }

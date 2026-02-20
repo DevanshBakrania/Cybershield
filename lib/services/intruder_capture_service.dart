@@ -6,8 +6,6 @@ import 'package:hive/hive.dart';
 
 import '../models/vault_item.dart';
 import '../storage/hive_boxes.dart';
-
-// 🔥 ADDED: Import the actual encryption files instead of VaultService
 import '../security/key_manager.dart';
 import '../security/encryption.dart';
 
@@ -28,7 +26,7 @@ class IntruderTrapService {
 
       _controller = CameraController(
         frontCam,
-        ResolutionPreset.low,
+        ResolutionPreset.medium, // Bumped to medium so the face is actually recognizable
         enableAudio: false,
       );
 
@@ -47,6 +45,9 @@ class IntruderTrapService {
         return;
       }
 
+      // Allow camera exposure to settle before snapping (Prevents black photos/crashes)
+      await Future.delayed(const Duration(milliseconds: 400));
+
       final XFile shot = await _controller!.takePicture();
 
       final dir = await getApplicationDocumentsDirectory();
@@ -55,22 +56,20 @@ class IntruderTrapService {
         await evidenceDir.create(recursive: true);
       }
 
-      final filePath =
-          '${evidenceDir.path}/intruder_${DateTime.now().millisecondsSinceEpoch}.jpg';
-
+      final filePath = '${evidenceDir.path}/intruder_${DateTime.now().millisecondsSinceEpoch}.jpg';
       await File(shot.path).copy(filePath);
 
-      // 🔥 FIX: Initialize the EncryptionService securely right before we need it
       final key = await KeyManager().getOrGenerateKey();
       final encryption = EncryptionService();
       encryption.init(key);
 
-      // Safely encrypt the path
       final encryptedPath = encryption.encrypt(filePath);
-
-      // Save to the user's specific vault box
       final boxName = 'vault_$username';
-      final vaultBox = await Hive.openBox<VaultItem>(boxName);
+
+      // Check if box is open before opening (Prevents Hive errors)
+      final vaultBox = Hive.isBoxOpen(boxName)
+          ? Hive.box<VaultItem>(boxName)
+          : await Hive.openBox<VaultItem>(boxName);
 
       await vaultBox.add(
         VaultItem(

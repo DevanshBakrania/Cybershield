@@ -33,7 +33,7 @@ class _LoginScreenState extends State<LoginScreen> {
   static const Color neon = Color(0xFFCCFF00);
 
   // ─────────────────────────
-  // LOAD USER (NO AUTO BIOMETRIC)
+  // LOAD USER
   // ─────────────────────────
   Future<void> _loadUser() async {
     try {
@@ -51,11 +51,11 @@ class _LoginScreenState extends State<LoginScreen> {
 
       await IntruderTrapService.init(found.username);
 
-      _msg("Choose authentication method", neon);
+      _msg("User located. Awaiting authentication.", neon);
       setState(() {});
     } catch (_) {
       _user = null;
-      _msg("User not found", Colors.red);
+      _msg("User not found in local registry.", Colors.red);
       setState(() {});
     }
   }
@@ -76,7 +76,9 @@ class _LoginScreenState extends State<LoginScreen> {
         case "password":
           success = hashValue(passCtrl.text) == _user!.passwordHash;
           break;
-        case "biometric":
+        case "fingerprint":
+        case "face_lock":
+        case "biometric": // Keeping legacy biometric just in case old users exist
           success = await bio.authenticate();
           break;
       }
@@ -99,7 +101,7 @@ class _LoginScreenState extends State<LoginScreen> {
     if (_user == null) return;
 
     if (_pendingPattern.length < 3) {
-      _msg("Draw pattern first", Colors.orange);
+      _msg("Draw a valid pattern to proceed.", Colors.orange);
       return;
     }
 
@@ -133,18 +135,16 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    _msg("1 verified. Choose next method.", neon);
+    _msg("Authentication 1/2 verified. Proceed to next step.", neon);
     setState(() {});
   }
 
-  // ✅ FIX: Renamed to _onFail (capital F) and used _user!.username
   Future<void> _onFail() async {
-    if (_user == null) return; // Safety check
+    if (_user == null) return;
 
-    attempts++; // Increment the attempt counter first
+    attempts++;
 
     if (attempts >= 2) {
-      // 🔥 2nd Failed Attempt: Fire the camera AND redirect to dummy screen
       IntruderTrapService.capture(_user!.username);
 
       Navigator.pushReplacementNamed(
@@ -153,8 +153,7 @@ class _LoginScreenState extends State<LoginScreen> {
         arguments: _user!.username,
       );
     } else {
-      // 🔥 1st Failed Attempt: Show the warning message (No camera yet)
-      _msg("Invalid authentication (1 attempt remaining)", Colors.red);
+      _msg("Access Denied (1 attempt remaining before lockdown)", Colors.red);
     }
   }
 
@@ -170,9 +169,16 @@ class _LoginScreenState extends State<LoginScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.black,
-        title: const Text(
-          "Emergency Access",
-          style: TextStyle(color: neon),
+        shape: RoundedRectangleBorder(
+            side: const BorderSide(color: Colors.red),
+            borderRadius: BorderRadius.circular(12)
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: Colors.red),
+            SizedBox(width: 8),
+            Text("Emergency Override", style: TextStyle(color: Colors.red)),
+          ],
         ),
         content: TextField(
           controller: panicCtrl,
@@ -181,20 +187,19 @@ class _LoginScreenState extends State<LoginScreen> {
           maxLength: 4,
           style: const TextStyle(color: Colors.white),
           decoration: const InputDecoration(
-            hintText: "Enter Panic PIN",
+            hintText: "Enter Override PIN",
             hintStyle: TextStyle(color: Colors.white38),
-            enabledBorder:
-            UnderlineInputBorder(borderSide: BorderSide(color: neon)),
-            focusedBorder:
-            UnderlineInputBorder(borderSide: BorderSide(color: neon)),
+            enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.red)),
+            focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.red)),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text("Cancel", style: TextStyle(color: Colors.grey)),
+            child: const Text("Abort", style: TextStyle(color: Colors.grey)),
           ),
-          TextButton(
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () {
               if (panicCtrl.text == "0000") {
                 Navigator.pop(ctx);
@@ -204,10 +209,10 @@ class _LoginScreenState extends State<LoginScreen> {
                   arguments: _user!.username,
                 );
               } else {
-                _msg("Invalid Panic PIN", Colors.red);
+                _msg("Override Failed.", Colors.red);
               }
             },
-            child: const Text("Confirm", style: TextStyle(color: neon)),
+            child: const Text("Execute", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -215,8 +220,7 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   void _msg(String m, Color c) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text(m), backgroundColor: c));
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(m), backgroundColor: c));
   }
 
   // ─────────────────────────
@@ -226,152 +230,253 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          const SizedBox(height: 32),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: neon),
+      ),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Icon(Icons.security, color: neon, size: 60),
+              const SizedBox(height: 16),
+              const Text(
+                "CYBERSHIELD",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: neon,
+                  fontSize: 28,
+                  letterSpacing: 4,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                "Secure Node Login",
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white54, letterSpacing: 1.5),
+              ),
+              const SizedBox(height: 48),
 
-          const Text(
-            "CyberShield",
-            style: TextStyle(
-              color: neon,
-              fontSize: 30,
-              fontWeight: FontWeight.bold,
-            ),
+              // BEFORE USER LOAD
+              if (_user == null) ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.white12),
+                  ),
+                  child: Column(
+                    children: [
+                      _input("Vault Username", userCtrl, icon: Icons.person_outline),
+                      const SizedBox(height: 24),
+                      _primaryBtn("Initiate Handshake", _loadUser),
+                    ],
+                  ),
+                ),
+              ],
+
+              // AFTER USER LOAD
+              if (_user != null) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          "Target: ${_user!.username}",
+                          style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          "Security Level: ${verified.length} / 2",
+                          style: const TextStyle(color: neon, fontSize: 14),
+                        ),
+                      ],
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.warning_amber_rounded, color: Colors.redAccent),
+                      tooltip: "Emergency Access",
+                      onPressed: _showPanicDialog,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // PROGRESSIVE AUTHENTICATION RENDERER
+                _renderCurrentAuthStep(),
+              ],
+            ],
           ),
-
-          const SizedBox(height: 6),
-          const Text("Secure Login", style: TextStyle(color: Colors.white70)),
-          const SizedBox(height: 32),
-
-          // BEFORE USER LOAD
-          if (_user == null) ...[
-            _input("Username", userCtrl),
-            const SizedBox(height: 12),
-            _primaryBtn("Continue", _loadUser),
-          ],
-
-          // AFTER USER LOAD
-          if (_user != null) ...[
-            Align(
-              alignment: Alignment.centerRight,
-              child: IconButton(
-                icon: const Icon(Icons.warning_amber_rounded, color: neon),
-                tooltip: "Emergency Access",
-                onPressed: _showPanicDialog,
-              ),
-            ),
-
-            Text(
-              "Welcome, ${_user!.fullName}",
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-
-            const SizedBox(height: 6),
-            Text(
-              "Authentication ${verified.length} / 2",
-              style: const TextStyle(color: Colors.white70),
-            ),
-
-            const SizedBox(height: 24),
-            ..._methodWidgets(),
-          ],
-        ],
+        ),
       ),
     );
   }
 
   // ─────────────────────────
-  // METHOD UI
+  // METHOD UI - PROGRESSIVE
   // ─────────────────────────
-  List<Widget> _methodWidgets() {
-    final methods = _user!.enabledAuthMethods
-        .where((m) => !verified.contains(m))
-        .toList();
+  Widget _renderCurrentAuthStep() {
+    // Only fetch the remaining unverified methods
+    final pendingMethods = _user!.enabledAuthMethods.where((m) => !verified.contains(m)).toList();
 
-    return methods.map((m) {
-      switch (m) {
-        case "pin":
-          return _card(
-            Column(
-              children: [
-                _input("PIN", pinCtrl, obscure: true),
-                _primaryBtn("Verify PIN", () => _verify("pin")),
-              ],
-            ),
-          );
+    // If somehow we have no pending methods but haven't routed to dashboard yet
+    if (pendingMethods.isEmpty) return const Center(child: CircularProgressIndicator(color: neon));
 
-        case "password":
-          return _card(
-            Column(
-              children: [
-                _input("Password", passCtrl, obscure: true),
-                _primaryBtn("Verify Password", () => _verify("password")),
-              ],
-            ),
-          );
+    // Only render the VERY FIRST unverified method in the list
+    final currentMethod = pendingMethods.first;
 
-        case "pattern":
-          return _card(
-            Column(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: AspectRatio(
-                    aspectRatio: 1,
-                    child: SizedBox.expand(
-                      child: PatternInputWidget(onComplete: _onPattern),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _primaryBtn("Verify Pattern", _verifyPattern),
-              ],
-            ),
-          );
-
-        case "biometric":
-          return _card(
-            _primaryBtn("Use Biometric", () => _verify("biometric")),
-          );
-
-        default:
-          return const SizedBox();
-      }
-    }).toList();
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        return FadeTransition(opacity: animation, child: SlideTransition(
+          position: Tween<Offset>(begin: const Offset(0.05, 0), end: Offset.zero).animate(animation),
+          child: child,
+        ));
+      },
+      child: _buildMethodWidget(currentMethod, key: ValueKey(currentMethod)),
+    );
   }
 
-  Widget _card(Widget child) {
+  Widget _buildMethodWidget(String method, {Key? key}) {
+    switch (method) {
+      case "pin":
+        return _card(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Enter 4-Digit PIN", style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 8),
+              _input("PIN", pinCtrl, obscure: true, isNumber: true, icon: Icons.dialpad),
+              const SizedBox(height: 16),
+              _primaryBtn("Verify Credentials", () => _verify("pin")),
+            ],
+          ),
+          key: key,
+        );
+
+      case "password":
+        return _card(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text("Enter Master Password", style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 8),
+              _input("Password", passCtrl, obscure: true, icon: Icons.password),
+              const SizedBox(height: 16),
+              _primaryBtn("Verify Credentials", () => _verify("password")),
+            ],
+          ),
+          key: key,
+        );
+
+      case "pattern":
+        return _card(
+          Column(
+            children: [
+              const Text("Draw Security Pattern", style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 16),
+              SizedBox(
+                height: 300, // Constrain the height so it doesn't warp
+                width: 300,
+                child: PatternInputWidget(onComplete: _onPattern),
+              ),
+              const SizedBox(height: 24),
+              _primaryBtn("Verify Pattern", _verifyPattern),
+            ],
+          ),
+          key: key,
+        );
+
+      case "fingerprint":
+        return _card(
+          Column(
+            children: [
+              const Icon(Icons.fingerprint, color: neon, size: 64),
+              const SizedBox(height: 16),
+              const Text("Biometric Scan Required", style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 24),
+              _primaryBtn("Initiate Fingerprint Scan", () => _verify("fingerprint")),
+            ],
+          ),
+          key: key,
+        );
+
+      case "face_lock":
+        return _card(
+          Column(
+            children: [
+              const Icon(Icons.face, color: neon, size: 64),
+              const SizedBox(height: 16),
+              const Text("Facial Recognition Required", style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 24),
+              _primaryBtn("Initiate Face Scan", () => _verify("face_lock")),
+            ],
+          ),
+          key: key,
+        );
+
+      case "biometric": // Legacy fallback
+        return _card(
+          Column(
+            children: [
+              const Icon(Icons.fingerprint, color: neon, size: 64),
+              const SizedBox(height: 16),
+              const Text("Biometric Scan Required", style: TextStyle(color: Colors.white70)),
+              const SizedBox(height: 24),
+              _primaryBtn("Initiate Biometric Scan", () => _verify("biometric")),
+            ],
+          ),
+          key: key,
+        );
+
+      default:
+        return const SizedBox();
+    }
+  }
+
+  Widget _card(Widget child, {Key? key}) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 20),
-      padding: const EdgeInsets.all(16),
+      key: key,
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        border: Border.all(color: neon),
-        borderRadius: BorderRadius.circular(12),
+          color: Colors.white.withValues(alpha: 0.03),
+          border: Border.all(color: neon.withValues(alpha: 0.5)),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(color: neon.withValues(alpha: 0.05), blurRadius: 20, spreadRadius: 2),
+          ]
       ),
       child: child,
     );
   }
 
-  Widget _input(String label, TextEditingController c,
-      {bool obscure = false}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: TextField(
-        controller: c,
-        obscureText: obscure,
-        style: const TextStyle(color: Colors.white),
-        decoration: InputDecoration(
-          labelText: label, // Added the missing label text back in so the user sees what to type
-          labelStyle: const TextStyle(color: Colors.white70),
-          enabledBorder:
-          const UnderlineInputBorder(borderSide: BorderSide(color: neon)),
-          focusedBorder:
-          const UnderlineInputBorder(borderSide: BorderSide(color: neon)),
+  Widget _input(String label, TextEditingController c, {bool obscure = false, bool isNumber = false, IconData? icon}) {
+    return TextField(
+      controller: c,
+      obscureText: obscure,
+      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      style: const TextStyle(color: Colors.white, fontSize: 16, letterSpacing: 2),
+      decoration: InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(color: Colors.white54, letterSpacing: 0),
+        prefixIcon: icon != null ? Icon(icon, color: neon) : null,
+        filled: true,
+        fillColor: Colors.black.withValues(alpha: 0.5),
+        enabledBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: Colors.white24),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: neon, width: 2),
+          borderRadius: BorderRadius.circular(12),
         ),
       ),
     );
@@ -380,16 +485,19 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget _primaryBtn(String text, VoidCallback onTap) {
     return SizedBox(
       width: double.infinity,
+      height: 56,
       child: ElevatedButton(
         style: ElevatedButton.styleFrom(
           backgroundColor: neon,
           foregroundColor: Colors.black,
-          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          elevation: 8,
+          shadowColor: neon.withValues(alpha: 0.4),
         ),
         onPressed: onTap,
         child: Text(
-          text,
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          text.toUpperCase(),
+          style: const TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5),
         ),
       ),
     );

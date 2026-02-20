@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:ui';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -14,6 +15,7 @@ import '../../models/vault_item.dart';
 import '../../security/key_manager.dart';
 import '../../security/encryption.dart';
 import '../../widgets/cyber_ui.dart';
+import '../../services/intruder_capture_service.dart';
 
 class VaultScreen extends StatefulWidget {
   final UserModel user;
@@ -144,22 +146,49 @@ class _VaultScreenState extends State<VaultScreen>
       return Scaffold(
         backgroundColor: CyberTheme.background,
         appBar: AppBar(
-          title: const Text("MASTER VAULT", style: TextStyle(letterSpacing: 2)),
+          title: const Text(
+              "MASTER VAULT",
+              style: TextStyle(letterSpacing: 2, fontWeight: FontWeight.bold, color: Color(0xFFCCFF00))
+          ),
           centerTitle: true,
           backgroundColor: Colors.transparent,
           elevation: 0,
+          actions: [
+            // ✨ FIXED: Wrapped in an IconButton so it actually clicks!
+            IconButton(
+              padding: const EdgeInsets.only(right: 16.0),
+              icon: const Icon(Icons.lock_outline, color: Color(0xFFCCFF00)),
+              onPressed: () {
+                // Instantly kicks the user out of the vault back to the Dashboard
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text("Vault securely locked.", style: TextStyle(color: Colors.black)),
+                      backgroundColor: Color(0xFFCCFF00),
+                      duration: Duration(seconds: 1),
+                    )
+                );
+              },
+            )
+          ],
         ),
-        body: GridView.count(
-          crossAxisCount: 2,
-          padding: const EdgeInsets.all(16),
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
+        body: Column(
           children: [
-            _tile("PASSWORDS", Icons.vpn_key, Colors.blue, "Password"),
-            _tile("SECURE NOTES", Icons.text_snippet, Colors.amber, "Note"),
-            _tile("FILES", Icons.folder_shared, Colors.purple, "File"),
-            _tile("INTRUDER LOGS", Icons.warning_amber,
-                CyberTheme.dangerRed, "Evidence"),
+            Expanded(
+              child: GridView.count(
+                crossAxisCount: 2,
+                padding: const EdgeInsets.all(24),
+                crossAxisSpacing: 20,
+                mainAxisSpacing: 20,
+                children: [
+                  // ✨ UPDATED: Icons and colors mapped to match your screenshot reference
+                  _tile("PASSWORDS", Icons.password, Colors.blueAccent, "Password"),
+                  _tile("SECURE NOTES", Icons.insert_drive_file, Colors.amberAccent, "Note"),
+                  _tile("FILES", Icons.folder, Colors.purpleAccent, "File"),
+                  _tile("INTRUDER LOGS", Icons.warning_amber_rounded, Colors.pinkAccent, "Evidence"),
+                ],
+              ),
+            ),
           ],
         ),
       );
@@ -168,29 +197,54 @@ class _VaultScreenState extends State<VaultScreen>
     return _buildItemList(_selectedCategory!);
   }
 
+  // ✨ UPDATED: Flat, minimalist design matching your screenshot
   Widget _tile(String title, IconData icon, Color color, String category) {
     return GestureDetector(
       onTap: () => setState(() => _selectedCategory = category),
+      onLongPress: () async {
+        // ✨ DIAGNOSTIC CAMERA TEST: Expanded with permissions and explicit error catching
+        if (category == "Evidence") {
+          try {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Checking camera permissions...")));
+            var status = await Permission.camera.request();
+
+            if (!status.isGranted) {
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("FAILED: Camera permission denied!")));
+              return;
+            }
+
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Test: Snapping Intruder Photo...")));
+            await IntruderTrapService.init(widget.user.username);
+            await IntruderTrapService.capture(widget.user.username);
+            setState(() {});
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Test Complete! Open Intruder Logs.")));
+          } catch (e) {
+            // This will print the exact reason the camera is failing directly to your screen
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("CAMERA CRASH: $e"), backgroundColor: Colors.red));
+          }
+        }
+      },
       child: Container(
         decoration: BoxDecoration(
-          color: CyberTheme.surface,
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
+          color: Colors.white.withValues(alpha: 0.03), // Very subtle flat background
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withValues(alpha: 0.4), width: 1.0), // Thin clean border
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 40, color: color),
-            const SizedBox(height: 12),
+            Icon(icon, size: 42, color: color),
+            const SizedBox(height: 16),
             Text(title,
                 style: const TextStyle(
                     color: Colors.white,
-                    fontWeight: FontWeight.bold,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 2,
                     fontSize: 12)),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             Text(
-              "${_vaultBox.values.where((e) => e.category == category).length} Items",
-              style: const TextStyle(color: Colors.grey, fontSize: 10),
+              "${_vaultBox.values.where((e) => e.category == category && e.title.isNotEmpty).length} Items",
+              style: const TextStyle(color: Colors.white54, fontSize: 12),
             ),
           ],
         ),
@@ -205,6 +259,7 @@ class _VaultScreenState extends State<VaultScreen>
 
     final items = _vaultBox.values.where((e) {
       if (e.category != category) return false;
+      if (e.title.isEmpty) return false;
       if (!searchable) return true;
       return e.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
           e.subCategory.toLowerCase().contains(_searchQuery.toLowerCase());
@@ -236,18 +291,15 @@ class _VaultScreenState extends State<VaultScreen>
             ? PreferredSize(
           preferredSize: const Size.fromHeight(56),
           child: Padding(
-            padding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: TextField(
               controller: _searchCtrl,
               onChanged: (v) => setState(() => _searchQuery = v),
               style: const TextStyle(color: Colors.white),
               decoration: InputDecoration(
-                hintText: "Search vault...",
-                hintStyle:
-                TextStyle(color: Colors.grey.withValues(alpha: 0.5)),
-                prefixIcon: const Icon(Icons.search,
-                    color: CyberTheme.neonGreen),
+                hintText: "Decrypt & search...",
+                hintStyle: TextStyle(color: Colors.grey.withValues(alpha: 0.5)),
+                prefixIcon: const Icon(Icons.search, color: CyberTheme.neonGreen),
                 filled: true,
                 fillColor: CyberTheme.surface,
                 border: OutlineInputBorder(
@@ -262,15 +314,33 @@ class _VaultScreenState extends State<VaultScreen>
       ),
       floatingActionButton: category == "Evidence"
           ? null
-          : FloatingActionButton(
+          : FloatingActionButton.extended(
         backgroundColor: CyberTheme.neonGreen,
-        child: const Icon(Icons.add, color: Colors.black),
+        icon: const Icon(Icons.enhanced_encryption, color: Colors.black),
+        label: const Text("ENCRYPT NEW", style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
         onPressed: () => _addItem(category),
       ),
       body: items.isEmpty
-          ? const Center(
-        child: Text("No items found",
-            style: TextStyle(color: Colors.grey)),
+          ? Center(
+        child: category == "Evidence"
+            ? Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.shield_outlined, size: 100, color: CyberTheme.neonGreen.withValues(alpha: 0.4)),
+            const SizedBox(height: 24),
+            const Text("SYSTEM SECURE", style: TextStyle(color: CyberTheme.neonGreen, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 2)),
+            const SizedBox(height: 8),
+            const Text("0 BREACHES DETECTED", style: TextStyle(color: Colors.white54, letterSpacing: 1)),
+          ],
+        )
+            : Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.folder_off_outlined, size: 80, color: Colors.white24),
+            const SizedBox(height: 16),
+            const Text("NO ENCRYPTED DATA", style: TextStyle(color: Colors.white54, letterSpacing: 2, fontWeight: FontWeight.bold)),
+          ],
+        ),
       )
           : ListView.builder(
         padding: const EdgeInsets.all(16),
@@ -289,32 +359,24 @@ class _VaultScreenState extends State<VaultScreen>
         color: CyberTheme.surface,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: item.isPinned
-              ? CyberTheme.neonGreen.withValues(alpha: 0.5)
-              : Colors.transparent,
+            color: item.isPinned ? CyberTheme.neonGreen : Colors.white12,
+            width: item.isPinned ? 2 : 1
         ),
       ),
       child: ListTile(
-        leading: Icon(
-          item.isPinned ? Icons.push_pin : Icons.lock,
-          color: item.isPinned ? CyberTheme.neonGreen : Colors.grey,
-        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        leading: _buildLeadingIcon(item, category),
         title: Text(
-          category == "Note"
-              ? "[${item.subCategory}] ${item.title}"
-              : item.title,
-          style: const TextStyle(
-              color: Colors.white, fontWeight: FontWeight.bold),
+          category == "Note" ? "[${item.subCategory}] ${item.title}" : item.title,
+          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
+        subtitle: _buildSubtitle(item, category),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             if (category != "Evidence")
               IconButton(
-                icon: Icon(Icons.push_pin,
-                    color: item.isPinned
-                        ? CyberTheme.neonGreen
-                        : Colors.grey),
+                icon: Icon(Icons.push_pin, color: item.isPinned ? CyberTheme.neonGreen : Colors.grey),
                 onPressed: () {
                   item.isPinned = !item.isPinned;
                   item.save();
@@ -322,7 +384,7 @@ class _VaultScreenState extends State<VaultScreen>
                 },
               ),
             IconButton(
-              icon: const Icon(Icons.delete, color: Colors.grey),
+              icon: const Icon(Icons.delete_outline, color: Colors.grey),
               onPressed: () {
                 item.delete();
                 setState(() {});
@@ -336,14 +398,161 @@ class _VaultScreenState extends State<VaultScreen>
           } else if (category == "Evidence") {
             _showEvidence(item.content);
           } else {
-            _showDecrypted(item.content);
+            _editItem(item, category);
           }
         },
       ),
     );
   }
 
+  Widget _buildLeadingIcon(VaultItem item, String category) {
+    if (category == "Evidence") {
+      try {
+        final path = _encryption.decrypt(item.content).trim();
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.file(
+            File(path),
+            width: 40,
+            height: 40,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: CyberTheme.dangerRed),
+          ),
+        );
+      } catch (e) {
+        return const Icon(Icons.warning, color: CyberTheme.dangerRed);
+      }
+    }
+    return Icon(
+      item.isPinned ? Icons.push_pin : Icons.lock_outline,
+      color: item.isPinned ? CyberTheme.neonGreen : Colors.grey,
+    );
+  }
+
+  Widget? _buildSubtitle(VaultItem item, String category) {
+    if (category == "Password") {
+      return const Padding(
+        padding: EdgeInsets.only(top: 4.0),
+        child: Text("••••••••••••", style: TextStyle(color: Colors.white54, letterSpacing: 2, fontSize: 16)),
+      );
+    } else if (category == "Evidence") {
+      final dateStr = item.createdAt.toString().split('.')[0];
+      return Padding(
+        padding: const EdgeInsets.only(top: 4.0),
+        child: Text("BREACH: $dateStr", style: const TextStyle(color: CyberTheme.dangerRed, fontSize: 11, fontWeight: FontWeight.bold)),
+      );
+    }
+    return null;
+  }
+
   // ───────────────────────── ACTIONS ─────────────────────────
+
+  String _generateSecurePassword() {
+    const chars = 'AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz1234567890!@#\$%^&*()_+=-{}[]|:;<>,.?/';
+    final rnd = Random();
+    return String.fromCharCodes(Iterable.generate(16, (_) => chars.codeUnitAt(rnd.nextInt(chars.length))));
+  }
+
+  void _editItem(VaultItem item, String category) {
+    final title = TextEditingController(text: item.title);
+    final sub = TextEditingController(text: item.subCategory);
+
+    final content = TextEditingController(text: _encryption.decrypt(item.content));
+    bool obscureSecret = category == "Password";
+
+    showDialog(
+      context: context,
+      builder: (_) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: CyberTheme.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: CyberTheme.neonGreen.withValues(alpha: 0.5), width: 1.5),
+              ),
+              title: Row(
+                children: [
+                  Icon(Icons.edit, color: CyberTheme.neonGreen),
+                  const SizedBox(width: 8),
+                  Text("EDIT $category".toUpperCase(), style: const TextStyle(color: CyberTheme.neonGreen, fontSize: 16, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (category == "Note")
+                      _buildDialogField("Category", sub, false, null),
+                    _buildDialogField("Title (e.g. Gmail)", title, false, null),
+
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: TextField(
+                        controller: content,
+                        obscureText: obscureSecret,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: "Secret Payload",
+                          labelStyle: const TextStyle(color: Colors.white54),
+                          enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                          focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: CyberTheme.neonGreen)),
+                          suffixIcon: IconButton(
+                            icon: Icon(obscureSecret ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
+                            onPressed: () => setDialogState(() => obscureSecret = !obscureSecret),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    if (category == "Password")
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: CyberTheme.neonGreen,
+                          side: BorderSide(color: CyberTheme.neonGreen.withValues(alpha: 0.5)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        icon: const Icon(Icons.auto_awesome, size: 16),
+                        label: const Text("Generate New Password", style: TextStyle(fontSize: 12)),
+                        onPressed: () {
+                          setDialogState(() {
+                            content.text = _generateSecurePassword();
+                            obscureSecret = false;
+                          });
+                        },
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("CANCEL", style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CyberTheme.neonGreen,
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () {
+                    if (title.text.trim().isEmpty || content.text.trim().isEmpty) return;
+
+                    item.title = title.text.trim();
+                    item.subCategory = sub.text.trim();
+                    item.content = _encryption.encrypt(content.text);
+                    item.save();
+
+                    Navigator.pop(context);
+                    setState(() {});
+                  },
+                  child: const Text("UPDATE", style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          }
+      ),
+    );
+  }
 
   void _addItem(String category) {
     if (category == "File") {
@@ -354,50 +563,121 @@ class _VaultScreenState extends State<VaultScreen>
     final title = TextEditingController();
     final sub = TextEditingController(text: "General");
     final content = TextEditingController();
+    bool obscureSecret = true;
 
     showDialog(
       context: context,
-      builder: (_) => AlertDialog(
-        backgroundColor: CyberTheme.surface,
-        title: Text("Add $category",
-            style: const TextStyle(color: CyberTheme.neonGreen)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (category == "Note")
-              TextField(
-                  controller: sub,
-                  decoration: const InputDecoration(labelText: "Category")),
-            TextField(
-                controller: title,
-                decoration: const InputDecoration(labelText: "Title")),
-            TextField(
-                controller: content,
-                decoration: const InputDecoration(labelText: "Secret")),
-          ],
-        ),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Cancel")),
-          ElevatedButton(
-            onPressed: () {
-              _vaultBox.add(
-                VaultItem(
-                  username: widget.user.username,
-                  title: title.text,
-                  subCategory: sub.text,
-                  content: _encryption.encrypt(content.text),
-                  category: category,
-                  createdAt: DateTime.now(),
+      builder: (_) => StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: CyberTheme.surface,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: CyberTheme.neonGreen.withValues(alpha: 0.5), width: 1.5),
+              ),
+              title: Row(
+                children: [
+                  Icon(category == "Password" ? Icons.vpn_key : Icons.text_snippet, color: CyberTheme.neonGreen),
+                  const SizedBox(width: 8),
+                  Text("SECURE $category".toUpperCase(), style: const TextStyle(color: CyberTheme.neonGreen, fontSize: 16, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (category == "Note")
+                      _buildDialogField("Category", sub, false, null),
+                    _buildDialogField("Title (e.g. Gmail)", title, false, null),
+
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: TextField(
+                        controller: content,
+                        obscureText: obscureSecret,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: "Secret Payload",
+                          labelStyle: const TextStyle(color: Colors.white54),
+                          enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                          focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: CyberTheme.neonGreen)),
+                          suffixIcon: IconButton(
+                            icon: Icon(obscureSecret ? Icons.visibility_off : Icons.visibility, color: Colors.grey),
+                            onPressed: () => setDialogState(() => obscureSecret = !obscureSecret),
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    if (category == "Password")
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: CyberTheme.neonGreen,
+                          side: BorderSide(color: CyberTheme.neonGreen.withValues(alpha: 0.5)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        icon: const Icon(Icons.auto_awesome, size: 16),
+                        label: const Text("Generate Secure Password", style: TextStyle(fontSize: 12)),
+                        onPressed: () {
+                          setDialogState(() {
+                            content.text = _generateSecurePassword();
+                            obscureSecret = false;
+                          });
+                        },
+                      ),
+                  ],
                 ),
-              );
-              Navigator.pop(context);
-              setState(() {});
-            },
-            child: const Text("Save"),
-          ),
-        ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text("CANCEL", style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: CyberTheme.neonGreen,
+                    foregroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () {
+                    if (title.text.trim().isEmpty || content.text.trim().isEmpty) return;
+
+                    _vaultBox.add(
+                      VaultItem(
+                        username: widget.user.username,
+                        title: title.text.trim(),
+                        subCategory: sub.text.trim(),
+                        content: _encryption.encrypt(content.text),
+                        category: category,
+                        createdAt: DateTime.now(),
+                      ),
+                    );
+                    Navigator.pop(context);
+                    setState(() {});
+                  },
+                  child: const Text("ENCRYPT & SAVE", style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ],
+            );
+          }
+      ),
+    );
+  }
+
+  Widget _buildDialogField(String label, TextEditingController controller, bool obscure, Widget? suffix) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
+      child: TextField(
+        controller: controller,
+        obscureText: obscure,
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: const TextStyle(color: Colors.white54),
+          enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+          focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: CyberTheme.neonGreen)),
+          suffixIcon: suffix,
+        ),
       ),
     );
   }
@@ -435,30 +715,29 @@ class _VaultScreenState extends State<VaultScreen>
 
   void _showEvidence(String encPath) {
     try {
-      // Decrypt and trim any accidental invisible spaces
       final decryptedPath = _encryption.decrypt(encPath).trim();
       final imageFile = File(decryptedPath);
-
-      debugPrint("📸 Looking for image at: ${imageFile.path}");
-      debugPrint("📸 Does file exist? ${imageFile.existsSync()}");
 
       showDialog(
         context: context,
         builder: (_) => Dialog(
           backgroundColor: Colors.transparent,
-          child: Image.file(
-            imageFile,
-            errorBuilder: (context, error, stackTrace) {
-              return Container(
-                padding: const EdgeInsets.all(16),
-                color: Colors.black87,
-                child: Text(
-                  "Image missing from device storage.\nPath: ${imageFile.path}",
-                  style: const TextStyle(color: Colors.redAccent, fontSize: 12),
-                  textAlign: TextAlign.center,
-                ),
-              );
-            },
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Image.file(
+              imageFile,
+              errorBuilder: (context, error, stackTrace) {
+                return Container(
+                  padding: const EdgeInsets.all(16),
+                  color: Colors.black87,
+                  child: Text(
+                    "Image missing from device storage.\nPath: ${imageFile.path}",
+                    style: const TextStyle(color: Colors.redAccent, fontSize: 12),
+                    textAlign: TextAlign.center,
+                  ),
+                );
+              },
+            ),
           ),
         ),
       );
@@ -473,10 +752,32 @@ class _VaultScreenState extends State<VaultScreen>
       context: context,
       builder: (_) => AlertDialog(
         backgroundColor: CyberTheme.surface,
-        title: const Text("Decrypted",
-            style: TextStyle(color: CyberTheme.neonGreen)),
-        content:
-        SelectableText(text, style: const TextStyle(color: Colors.white)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: CyberTheme.neonGreen.withValues(alpha: 0.5), width: 1.0),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.lock_open, color: CyberTheme.neonGreen),
+            SizedBox(width: 8),
+            Text("DECRYPTED PAYLOAD", style: TextStyle(color: CyberTheme.neonGreen, fontSize: 14, fontWeight: FontWeight.bold)),
+          ],
+        ),
+        content: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.black45,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.white12),
+          ),
+          child: SelectableText(text, style: const TextStyle(color: Colors.white, fontSize: 16)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("CLOSE", style: TextStyle(color: Colors.grey)),
+          ),
+        ],
       ),
     );
   }

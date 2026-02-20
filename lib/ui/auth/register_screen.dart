@@ -15,6 +15,9 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
+  // Stepper state
+  int _currentStep = 0;
+
   final nameCtrl = TextEditingController();
   final userCtrl = TextEditingController();
   final pinCtrl = TextEditingController();
@@ -27,10 +30,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool usePin = false;
   bool usePassword = false;
   bool usePattern = false;
-  bool useBiometric = false;
+
+  // Splitting Biometrics into two distinct options
+  bool useFingerprint = false;
+  bool useFaceLock = false;
 
   // ─────────────────────────
-  // REGISTER (LOGIC UNCHANGED)
+  // REGISTER (UPDATED FOR FACE & FINGERPRINT)
   // ─────────────────────────
   Future<void> _register() async {
     final box = HiveBoxes.users;
@@ -57,7 +63,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     if (usePin) enabledMethods.add("pin");
     if (usePassword) enabledMethods.add("password");
     if (usePattern) enabledMethods.add("pattern");
-    if (useBiometric) enabledMethods.add("biometric");
+    if (useFingerprint) enabledMethods.add("fingerprint");
+    if (useFaceLock) enabledMethods.add("face_lock");
 
     if (enabledMethods.length < 2) {
       _err("Select at least 2 authentication methods");
@@ -88,7 +95,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
       pinHash: usePin ? hashValue(pinCtrl.text) : "",
       passwordHash: usePassword ? hashValue(passCtrl.text) : "",
       patternHash: usePattern ? hashValue(pattern.join()) : "",
-      biometricEnabled: useBiometric,
+      // Passing true if either is selected so your existing model doesn't break
+      biometricEnabled: useFingerprint || useFaceLock,
     );
 
     await box.add(user);
@@ -106,10 +114,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
           ),
           content: const Text(
             "Emergency / Forced Unlock Mode:\n\n"
-            "• Enter PIN: 0000\n"
-            "• A decoy (dummy) screen will open\n"
-            "• Intruder activity may be recorded\n\n"
-            "Do NOT share this PIN.",
+                "• Enter PIN: 0000\n"
+                "• A decoy (dummy) screen will open\n"
+                "• Intruder activity may be recorded\n\n"
+                "Do NOT share this PIN.",
             style: TextStyle(color: Colors.white70),
           ),
           actions: [
@@ -141,94 +149,176 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          const SizedBox(height: 24),
-          const Text(
-            "Create Account",
-            style: TextStyle(
-              color: cyberGreen,
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
+      appBar: AppBar(
+        title: const Text('CREATE ACCOUNT', style: TextStyle(color: cyberGreen, letterSpacing: 2)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: cyberGreen),
+      ),
+      body: Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: cyberGreen,
+            surface: Colors.black,
           ),
-
-          const SizedBox(height: 24),
-          _field(
-            label: "Full Name",
-            hint: "e.g. Rahul Sharma",
-            controller: nameCtrl,
-          ),
-          _field(
-            label: "Username",
-            hint: "Choose a unique username",
-            controller: userCtrl,
-          ),
-
-          const SizedBox(height: 16),
-          const Text(
-            "Authentication Methods (Select at least 2)",
-            style: TextStyle(color: Colors.white70),
-          ),
-
-          _toggle("PIN", usePin, (v) => setState(() => usePin = v)),
-          _toggle("Password", usePassword, (v) => setState(() => usePassword = v)),
-          _toggle("Pattern", usePattern, (v) => setState(() => usePattern = v)),
-          _toggle("Biometric", useBiometric, (v) => setState(() => useBiometric = v)),
-
-          const SizedBox(height: 16),
-
-          if (usePin)
-            _field(
-              label: "4-Digit PIN",
-              hint: "Enter a secure 4-digit PIN",
-              controller: pinCtrl,
-              isPin: true,
-              hideCounter: true,
+        ),
+        child: Stepper(
+          type: StepperType.vertical,
+          currentStep: _currentStep,
+          onStepContinue: () {
+            if (_currentStep == 0) {
+              setState(() => _currentStep += 1);
+            } else if (_currentStep == 1) {
+              setState(() => _currentStep += 1);
+            } else {
+              _register();
+            }
+          },
+          onStepCancel: () {
+            if (_currentStep > 0) {
+              setState(() => _currentStep -= 1);
+            } else {
+              Navigator.pop(context);
+            }
+          },
+          controlsBuilder: (context, details) {
+            return Padding(
+              padding: const EdgeInsets.only(top: 24.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: cyberGreen,
+                        foregroundColor: Colors.black,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      onPressed: details.onStepContinue,
+                      child: Text(
+                        _currentStep == 2 ? 'Create Account' : 'Continue',
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  if (_currentStep > 0)
+                    Expanded(
+                      child: OutlinedButton(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: cyberGreen,
+                          side: const BorderSide(color: cyberGreen),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        onPressed: details.onStepCancel,
+                        child: const Text('Back', style: TextStyle(fontSize: 16)),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+          steps: [
+            Step(
+              title: const Text('Profile Info', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              content: Column(
+                children: [
+                  _field(label: "Full Name", hint: "e.g. Rahul Sharma", controller: nameCtrl),
+                  _field(label: "Username", hint: "Choose a unique username", controller: userCtrl),
+                ],
+              ),
+              isActive: _currentStep >= 0,
+              state: _currentStep > 0 ? StepState.complete : StepState.indexed,
             ),
-
-          if (usePassword)
-            _field(
-              label: "Password",
-              hint: "Min 8 chars, letters & numbers",
-              controller: passCtrl,
-              isPassword: true,
+            Step(
+              title: const Text('Choose Security Arsenal', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              content: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Select at least 2 methods to secure your vault:", style: TextStyle(color: Colors.white70)),
+                  const SizedBox(height: 16),
+                  GridView.count(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 2.5,
+                    children: [
+                      _methodCard("PIN", Icons.pin, usePin, (v) => setState(() => usePin = v)),
+                      _methodCard("Password", Icons.password, usePassword, (v) => setState(() => usePassword = v)),
+                      _methodCard("Pattern", Icons.grid_on, usePattern, (v) => setState(() => usePattern = v)),
+                      _methodCard("Fingerprint", Icons.fingerprint, useFingerprint, (v) => setState(() => useFingerprint = v)),
+                      _methodCard("Face Lock", Icons.face, useFaceLock, (v) => setState(() => useFaceLock = v)),
+                    ],
+                  ),
+                ],
+              ),
+              isActive: _currentStep >= 1,
+              state: _currentStep > 1 ? StepState.complete : StepState.indexed,
             ),
-
-          if (usePattern) ...[
-            const SizedBox(height: 9),
-            const Text(
-              "Draw Pattern",
-              style: TextStyle(color: Colors.white70),
+            Step(
+              title: const Text('Configure Methods', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+              content: Column(
+                children: [
+                  if (!usePin && !usePassword && !usePattern && !useFingerprint && !useFaceLock)
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text("Please go back and select at least 2 methods.", style: TextStyle(color: Colors.redAccent)),
+                    ),
+                  if (usePin) _field(label: "4-Digit PIN", hint: "Enter a secure 4-digit PIN", controller: pinCtrl, isPin: true, hideCounter: true),
+                  if (usePassword) _field(label: "Password", hint: "Min 8 chars, letters & numbers", controller: passCtrl, isPassword: true),
+                  if (usePattern) ...[
+                    const SizedBox(height: 16),
+                    const Text("Draw Unlock Pattern", style: TextStyle(color: cyberGreen, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 16),
+                    PatternInputWidget(onComplete: (p) => pattern = p),
+                  ],
+                  if (useFaceLock) ...[
+                    const SizedBox(height: 16),
+                    const Text("Face Lock Setup will be handled by the device.", style: TextStyle(color: Colors.white54, fontStyle: FontStyle.italic)),
+                  ],
+                  if (useFingerprint) ...[
+                    const SizedBox(height: 8),
+                    const Text("Fingerprint Setup will be handled by the device.", style: TextStyle(color: Colors.white54, fontStyle: FontStyle.italic)),
+                  ]
+                ],
+              ),
+              isActive: _currentStep >= 2,
             ),
-            PatternInputWidget(onComplete: (p) => pattern = p),
           ],
-
-          const SizedBox(height: 32),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: cyberGreen,
-              foregroundColor: Colors.black,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-            ),
-            onPressed: _register,
-            child: const Text(
-              "Create Account",
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _toggle(String label, bool value, ValueChanged<bool> onChanged) {
-    return SwitchListTile(
-      value: value,
-      onChanged: onChanged,
-      activeColor: cyberGreen,
-      title: Text(label, style: const TextStyle(color: Colors.white)),
+  // ─────────────────────────
+  // UI HELPERS
+  // ─────────────────────────
+
+  Widget _methodCard(String title, IconData icon, bool isSelected, ValueChanged<bool> onTap) {
+    return GestureDetector(
+      onTap: () => onTap(!isSelected),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          color: isSelected ? cyberGreen.withValues(alpha: 0.1) : Colors.transparent,
+          border: Border.all(
+              color: isSelected ? cyberGreen : Colors.white24,
+              width: isSelected ? 2 : 1
+          ),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: isSelected ? cyberGreen : Colors.white54, size: 20),
+            const SizedBox(width: 8),
+            Text(title, style: TextStyle(color: isSelected ? cyberGreen : Colors.white54, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
     );
   }
 
