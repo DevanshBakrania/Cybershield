@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:hive_flutter/hive_flutter.dart'; // ✨ ADDED: Hive Import
 
 import '../../core/theme.dart';
 import '../../services/news_service.dart';
@@ -41,9 +41,11 @@ class _SecurityFeedScreenState extends State<SecurityFeedScreen>
     _loadLiveNews();
   }
 
+  // ✨ UPGRADED: Now pulls instantly from the Hive Database instead of SharedPreferences
   Future<void> _loadSavedNews() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedData = prefs.getStringList('saved_intel') ?? [];
+    final box = Hive.box('savedNews');
+    final List<dynamic> rawList = box.get('saved_intel', defaultValue: <dynamic>[]);
+    final List<String> savedData = rawList.map((e) => e.toString()).toList();
 
     if (mounted) {
       setState(() {
@@ -59,10 +61,11 @@ class _SecurityFeedScreenState extends State<SecurityFeedScreen>
     }
   }
 
+  // ✨ UPGRADED: Now writes instantly to the Hive Database
   Future<void> _saveBookmarksToStorage() async {
-    final prefs = await SharedPreferences.getInstance();
+    final box = Hive.box('savedNews');
     final savedData = _savedNews.map((item) => json.encode(item.toMap())).toList();
-    await prefs.setStringList('saved_intel', savedData);
+    await box.put('saved_intel', savedData);
   }
 
   void _handleTabChange() {
@@ -445,7 +448,6 @@ class _SecurityFeedScreenState extends State<SecurityFeedScreen>
 
   Widget _buildCategoryHeader(String category) {
     IconData icon;
-    // ✨ FIXED: Added block braces to clear warnings
     if (category == "Threat Intel") {
       icon = Icons.radar;
     } else if (category == "Exploits & Malware") {

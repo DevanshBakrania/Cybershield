@@ -33,6 +33,16 @@ class MainActivity: FlutterFragmentActivity() {
                 "getDeepOsInfo" -> result.success(getDeepOsInfo())
                 "getAppCounts" -> result.success(getAppCounts(this@MainActivity))
 
+                // ✨ NEW: Native Traffic Stats Reader
+                "getLiveNetworkBytes" -> {
+                    val rxBytes = android.net.TrafficStats.getTotalRxBytes()
+                    val txBytes = android.net.TrafficStats.getTotalTxBytes()
+                    val rx = if (rxBytes == android.net.TrafficStats.UNSUPPORTED.toLong()) 0L else rxBytes
+                    val tx = if (txBytes == android.net.TrafficStats.UNSUPPORTED.toLong()) 0L else txBytes
+                    // Return as a list of Longs so Dart can parse it
+                    result.success(listOf(rx, tx))
+                }
+
                 "getWidgetRealData" -> {
                     try {
                         // 1. Get Real Storage Data

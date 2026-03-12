@@ -9,8 +9,7 @@ import '../tools/tools_screen.dart';
 import '../benchmarks/benchmarks_screen.dart';
 import '../../core/theme.dart';
 import '../../services/device_service.dart';
-import 'package:installed_apps/installed_apps.dart';
-import 'package:installed_apps/app_info.dart';
+// ✨ REMOVED the unused 'installed_apps' imports because our Native Kotlin Engine is better!
 import '../battery/battery_monitor_screen.dart';
 import '../monitors/monitors_screen.dart';
 import '../../services/native_hardware_service.dart';
@@ -18,8 +17,12 @@ import 'package:home_widget/home_widget.dart';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:provider/provider.dart';
-import '../../core/battery_provider.dart';
 import 'package:flutter/services.dart';
+
+// Providers
+import '../../core/battery_provider.dart';
+import '../../core/cpu_provider.dart';
+import '../../core/ram_provider.dart';
 
 // Tab Screens
 import '../hardware/hardware_test_screen.dart';
@@ -37,11 +40,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   int _userAppsCount = 0;
   int _systemAppsCount = 0;
 
-  Map<String, dynamic>? _cpuData;
   Map<String, dynamic> _netInfo = {};
   Map<String, dynamic> _displayInfo = {};
-  Map<String, int> _memInfo = {};
-  Map<String, dynamic> _cpuInfo = {};
   Map<String, dynamic> _osInfo = {};
   double _designCapacity = 0.0;
 
@@ -52,11 +52,7 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
   // Animations & Timers
   late AnimationController _waveController;
-  Timer? _liveTimer;
   StreamSubscription? _netSub;
-
-  // CPU Live Jitter
-  List<int> _cpuFreqs = [2000, 2000, 1600, 1600];
 
   @override
   void initState() {
@@ -75,21 +71,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
         });
       }
     });
-
-    _liveTimer = Timer.periodic(const Duration(milliseconds: 800), (timer) async {
-      if (mounted && _audit != null) {
-        final liveCpuData = await NativeHardwareService.getDeepCpuInfo();
-        if (mounted) {
-          setState(() {
-            _cpuData = Map<String, dynamic>.from(liveCpuData);
-            _cpuFreqs = _cpuFreqs.map((freq) {
-              int change = (math.Random().nextInt(300) - 150);
-              return (freq + change).clamp(800, 3200);
-            }).toList();
-          });
-        }
-      }
-    });
   }
 
   Future<void> _loadDeviceData() async {
@@ -98,12 +79,8 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final data = await _device.getFullAudit();
     final net = await Connectivity().checkConnectivity();
 
+    // Still fetch once for widget syncs, but NO setStates needed for UI
     final memData = await NativeHardwareService.getDeepMemoryInfo();
-    final cpuData = await NativeHardwareService.getDeepCpuInfo();
-
-    if (mounted) {
-      setState(() => _cpuData = Map<String, dynamic>.from(cpuData));
-    }
 
     final capacity = await NativeHardwareService.getDesignCapacity();
     final netData = await NativeHardwareService.getDeepNetworkInfo();
@@ -145,7 +122,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
       debugPrint("Widget update failed: $e");
     }
 
-    // ✨ BYPASSING FLUTTER PACKAGE - USING OUR CUSTOM NATIVE KOTLIN COUNTER
     try {
       final Map<dynamic, dynamic> appCounts = await const MethodChannel('com.cybershield/hardware').invokeMethod('getAppCounts');
       if (mounted) {
@@ -161,8 +137,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     if (mounted) {
       setState(() {
         _audit = data;
-        _memInfo = memData;
-        _cpuInfo = cpuData;
         _designCapacity = capacity;
         _netInfo = netData;
         _displayInfo = displayData;
@@ -185,7 +159,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
   @override
   void dispose() {
     _waveController.dispose();
-    _liveTimer?.cancel();
     _netSub?.cancel();
     super.dispose();
   }
@@ -243,26 +216,32 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     final pixelRatio = MediaQuery.of(context).devicePixelRatio;
     final screenRes = "${(size.width * pixelRatio).toInt()} x ${(size.height * pixelRatio).toInt()}";
 
-    double ramPercent = 0.5;
-    try {
-      if (_audit!.ramLabel.contains("/")) {
-        final parts = _audit!.ramLabel.split("/");
-        double used = double.parse(parts[0].trim());
-        double total = double.parse(parts[1].replaceAll("GB", "").trim());
-        ramPercent = (used / total).clamp(0.0, 1.0);
-      }
-    } catch (_) {}
-
     return SafeArea(
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const Padding(
-            padding: EdgeInsets.only(bottom: 16),
-            child: Text("CyberShield", style: TextStyle(color: CyberTheme.primaryAccent, fontSize: 24, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
-          ).animate().fadeIn().slideX(),
+          // ✨ CENTERED LOGO FIX
+          Center(
+            child: const Padding(
+              padding: EdgeInsets.only(bottom: 16),
+              child: Text(
+                  "CYBERSHIELD",
+                  style: TextStyle(
+                      color: CyberTheme.primaryAccent,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 4.0
+                  )
+              ),
+            ),
+          ).animate().fadeIn().slideY(),
 
-          _buildCpuHeroCard().animate().fadeIn(delay: 100.ms).slideY(),
+          // ✨ CPU NOW DRIVEN BY PROVIDER
+          Consumer<CpuProvider>(
+            builder: (context, cpuProv, child) {
+              return _buildCpuHeroCard(cpuProv.cpuFreqs, cpuProv.cpuInfo).animate().fadeIn(delay: 100.ms).slideY();
+            },
+          ),
           const SizedBox(height: 12),
 
           Row(
@@ -301,7 +280,30 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
 
           Row(
             children: [
-              Expanded(child: _buildRingVitalCard("RAM", ramPercent, _audit!.ramLabel, onTap: () => _showRamDetails(ramPercent)).animate().fadeIn(delay: 600.ms)),
+              // ✨ RAM NOW DRIVEN BY PROVIDER
+              Expanded(
+                child: Consumer<RamProvider>(
+                  builder: (context, ramProv, child) {
+                    double ramPercent = 0.5;
+                    final memInfo = ramProv.memInfo;
+                    if (memInfo.isNotEmpty) {
+                      double memTotal = (memInfo["MemTotal"] ?? 0) / 1048576 / 1024;
+                      double memAvailable = (memInfo["MemAvailable"] ?? 0) / 1048576 / 1024;
+                      if (memTotal > 0) ramPercent = ((memTotal - memAvailable) / memTotal).clamp(0.0, 1.0);
+                    } else {
+                      try {
+                        if (_audit!.ramLabel.contains("/")) {
+                          final parts = _audit!.ramLabel.split("/");
+                          double used = double.parse(parts[0].trim());
+                          double total = double.parse(parts[1].replaceAll("GB", "").trim());
+                          ramPercent = (used / total).clamp(0.0, 1.0);
+                        }
+                      } catch (_) {}
+                    }
+                    return _buildRingVitalCard("RAM", ramPercent, _audit!.ramLabel, onTap: () => _showRamDetails(ramProv.memInfo));
+                  },
+                ).animate().fadeIn(delay: 600.ms),
+              ),
               const SizedBox(width: 12),
               Expanded(child: _buildRingVitalCard("Storage", _audit!.storageUsedPercent, _audit!.storageLabel, onTap: _showStorageDetails).animate().fadeIn(delay: 700.ms)),
             ],
@@ -748,11 +750,11 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     ));
   }
 
-  void _showCpuDetails() {
-    int cores = _cpuInfo["coreCount"] ?? 0;
-    List<dynamic> curFreqs = _cpuInfo["currentFreqs"] ?? [];
-    List<dynamic> maxFreqs = _cpuInfo["maxFreqs"] ?? [];
-    String hardware = _cpuInfo["hardware"] ?? "Unknown SoC";
+  void _showCpuDetails(Map<String, dynamic> cpuInfo) {
+    int cores = cpuInfo["coreCount"] ?? 0;
+    List<dynamic> curFreqs = cpuInfo["currentFreqs"] ?? [];
+    List<dynamic> maxFreqs = cpuInfo["maxFreqs"] ?? [];
+    String hardware = cpuInfo["hardware"] ?? "Unknown SoC";
 
     _showDetailSheet("CPU Details", Icons.memory, Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -831,21 +833,20 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     ));
   }
 
-  void _showRamDetails(double ramPercent) {
-    // ✨ BASE-10: Restored to match DevCheck's 7.77 GB RAM
+  void _showRamDetails(Map<String, int> memInfo) {
     const double bytesToGB = 1000000000.0;
 
-    double memTotal = (_memInfo["MemTotal"] ?? 0) / bytesToGB;
-    double memAvailable = (_memInfo["MemAvailable"] ?? 0) / bytesToGB;
-    double memFree = (_memInfo["MemFree"] ?? 0) / bytesToGB;
-    double cached = (_memInfo["Cached"] ?? 0) / bytesToGB;
-    double buffers = (_memInfo["Buffers"] ?? 0) / bytesToGB;
+    double memTotal = (memInfo["MemTotal"] ?? 0) / bytesToGB;
+    double memAvailable = (memInfo["MemAvailable"] ?? 0) / bytesToGB;
+    double memFree = (memInfo["MemFree"] ?? 0) / bytesToGB;
+    double cached = (memInfo["Cached"] ?? 0) / bytesToGB;
+    double buffers = (memInfo["Buffers"] ?? 0) / bytesToGB;
 
     double memUsed = memTotal - memAvailable;
     double realRamPercent = memTotal > 0 ? (memUsed / memTotal) : 0;
 
-    double zramTotal = (_memInfo["SwapTotal"] ?? 0) / bytesToGB;
-    double zramFree = (_memInfo["SwapFree"] ?? 0) / bytesToGB;
+    double zramTotal = (memInfo["SwapTotal"] ?? 0) / bytesToGB;
+    double zramFree = (memInfo["SwapFree"] ?? 0) / bytesToGB;
     double zramUsed = zramTotal - zramFree;
     double zramPercent = zramTotal > 0 ? (zramUsed / zramTotal) : 0;
 
@@ -903,7 +904,6 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     if (!mounted) return;
     Navigator.pop(context);
 
-    // ✨ BASE-10: Restored to match DevCheck's 12.94 GB Free Storage
     const double bytesToGB = 1000000000.0;
 
     double dataTotal = (storageData["dataTotal"] ?? 0) / bytesToGB;
@@ -1044,9 +1044,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
     );
   }
 
-  Widget _buildCpuHeroCard() {
+  Widget _buildCpuHeroCard(List<int> cpuFreqs, Map<String, dynamic> cpuInfo) {
     return GestureDetector(
-        onTap: _showCpuDetails,
+        onTap: () => _showCpuDetails(cpuInfo),
         child: Container(
           height: 160,
           decoration: BoxDecoration(color: CyberTheme.surface, borderRadius: BorderRadius.circular(16)),
@@ -1061,9 +1061,9 @@ class _DashboardScreenState extends State<DashboardScreen> with TickerProviderSt
                   children: [
                     Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text("CPU Status (${_audit!.coreCount} Cores)", style: const TextStyle(color: Colors.grey, fontSize: 12)), const Icon(Icons.more_vert, color: Colors.grey, size: 16)]),
                     const Spacer(),
-                    Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [_cpuCoreText("${_cpuFreqs[0]} MHz"), _cpuCoreText("${_cpuFreqs[1]} MHz")]),
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [_cpuCoreText("${cpuFreqs[0]} MHz"), _cpuCoreText("${cpuFreqs[1]} MHz")]),
                     const SizedBox(height: 8),
-                    Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [_cpuCoreText("${_cpuFreqs[2]} MHz"), _cpuCoreText("${_cpuFreqs[3]} MHz")]),
+                    Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [_cpuCoreText("${cpuFreqs[2]} MHz"), _cpuCoreText("${cpuFreqs[3]} MHz")]),
                     const SizedBox(height: 10),
                   ],
                 ),

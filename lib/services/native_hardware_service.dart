@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 class NativeHardwareService {
@@ -10,7 +11,7 @@ class NativeHardwareService {
       final Map<dynamic, dynamic> result = await _channel.invokeMethod('getDeepMemoryInfo');
       return result.cast<String, int>();
     } catch (e) {
-      print("Failed to get deep memory info: $e");
+      debugPrint("Failed to get deep memory info: $e");
       return {};
     }
   }
@@ -21,7 +22,7 @@ class NativeHardwareService {
       final Map<dynamic, dynamic> result = await _channel.invokeMethod('getDeepCpuInfo');
       return result.cast<String, dynamic>();
     } catch (e) {
-      print("Failed to get deep CPU info: $e");
+      debugPrint("Failed to get deep CPU info: $e");
       return {};
     }
   }
@@ -32,7 +33,7 @@ class NativeHardwareService {
       final double capacity = await _channel.invokeMethod('getDesignCapacity');
       return capacity;
     } catch (e) {
-      print("Failed to get battery design capacity: $e");
+      debugPrint("Failed to get battery design capacity: $e");
       return 0.0;
     }
   }
@@ -43,7 +44,7 @@ class NativeHardwareService {
       final Map<dynamic, dynamic> result = await _channel.invokeMethod('getLiveBatteryHardware');
       return result.cast<String, dynamic>();
     } catch (e) {
-      print("Failed to get live battery hardware: $e");
+      debugPrint("Failed to get live battery hardware: $e");
       return {};
     }
   }
@@ -54,7 +55,7 @@ class NativeHardwareService {
       final Map<dynamic, dynamic> result = await _channel.invokeMethod('getDeepNetworkInfo');
       return result.cast<String, dynamic>();
     } catch (e) {
-      print("Failed to get deep network info: $e");
+      debugPrint("Failed to get deep network info: $e");
       return {};
     }
   }
@@ -65,7 +66,7 @@ class NativeHardwareService {
       final Map<dynamic, dynamic> result = await _channel.invokeMethod('getDeepDisplayInfo');
       return result.cast<String, dynamic>();
     } catch (e) {
-      print("Failed to get deep display info: $e");
+      debugPrint("Failed to get deep display info: $e");
       return {};
     }
   }
@@ -76,7 +77,7 @@ class NativeHardwareService {
       final Map<dynamic, dynamic>? result = await const MethodChannel('com.cybershield/hardware').invokeMethod('getWidgetRealData');
       return result != null ? Map<String, dynamic>.from(result) : {};
     } catch (e) {
-      print("Error fetching widget real data: $e");
+      debugPrint("Error fetching widget real data: $e");
       return {};
     }
   }
@@ -86,7 +87,7 @@ class NativeHardwareService {
       final List<dynamic> result = await _channel.invokeMethod('getDeepCameraInfo');
       return result;
     } catch (e) {
-      print("Failed to fetch camera info: $e");
+      debugPrint("Failed to fetch camera info: $e");
       return [];
     }
   }
@@ -96,7 +97,7 @@ class NativeHardwareService {
       final Map<dynamic, dynamic> result = await _channel.invokeMethod('getDeepStorageInfo');
       return Map<String, dynamic>.from(result);
     } catch (e) {
-      print("Failed to fetch storage info: $e");
+      debugPrint("Failed to fetch storage info: $e");
       return {};
     }
   }
@@ -107,8 +108,21 @@ class NativeHardwareService {
       final Map<dynamic, dynamic> result = await _channel.invokeMethod('getDeepOsInfo');
       return Map<String, dynamic>.from(result);
     } catch (e) {
-      print("Failed to fetch OS info: $e");
+      debugPrint("Failed to fetch OS info: $e");
       return {};
+    }
+  }
+
+  // ✨ NEW: FETCH LIVE NETWORK BYTES FOR SPEEDOMETER
+  static Future<List<int>> getLiveNetworkBytes() async {
+    try {
+      final List<dynamic> result = await _channel.invokeMethod('getLiveNetworkBytes');
+
+      // Need to cast to int safely because Kotlin returns Longs
+      return result.map((e) => (e as num).toInt()).toList();
+    } catch (e) {
+      debugPrint("Failed to get live network bytes: $e");
+      return [0, 0];
     }
   }
 }

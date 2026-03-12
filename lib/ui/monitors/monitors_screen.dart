@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_overlay_window/flutter_overlay_window.dart';
+import 'package:provider/provider.dart'; // ✨ ADDED Provider
 import '../../core/theme.dart';
 import '../../services/native_hardware_service.dart';
+import '../../core/network_provider.dart'; // ✨ ADDED Network Provider
 
 class MonitorsScreen extends StatefulWidget {
   const MonitorsScreen({super.key});
@@ -14,6 +16,9 @@ class MonitorsScreen extends StatefulWidget {
 class _MonitorsScreenState extends State<MonitorsScreen> {
   bool _isOverlayActive = false;
   Timer? _streamTimer;
+
+  int _selectedStyle = 0;
+  final List<String> _hudStyles = ["Classic Box", "Status Bar", "Stealth Minimal", "Terminal Console"];
 
   @override
   void initState() {
@@ -41,7 +46,8 @@ class _MonitorsScreenState extends State<MonitorsScreen> {
 
         await FlutterOverlayWindow.shareData({
           'battery': batStr,
-          'ram': ramStr
+          'ram': ramStr,
+          'style': _selectedStyle
         });
       } catch (e) {
         debugPrint("Stream error: $e");
@@ -79,6 +85,11 @@ class _MonitorsScreenState extends State<MonitorsScreen> {
     }
   }
 
+  void _updateStyle(int index) {
+    setState(() => _selectedStyle = index);
+    FlutterOverlayWindow.shareData({'style': _selectedStyle});
+  }
+
   @override
   void dispose() {
     _streamTimer?.cancel();
@@ -98,6 +109,43 @@ class _MonitorsScreenState extends State<MonitorsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // ──────────────────────────────────────────────────────────────────
+          // ✨ NEW: LIVE NETWORK SPEEDOMETER
+          // ──────────────────────────────────────────────────────────────────
+          Consumer<NetworkProvider>(
+            builder: (context, netProv, child) {
+              return Container(
+                padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+                decoration: BoxDecoration(
+                    color: CyberTheme.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: CyberTheme.primaryAccent.withValues(alpha: 0.2)),
+                    boxShadow: [
+                      BoxShadow(color: CyberTheme.primaryAccent.withValues(alpha: 0.05), blurRadius: 20)
+                    ]
+                ),
+                child: Column(
+                  children: [
+                    const Text("LIVE BANDWIDTH TRACKER", style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 2)),
+                    const SizedBox(height: 24),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        _buildSpeedDial(Icons.download_rounded, "DOWNLOAD", netProv.downloadSpeed, netProv.downloadUnit, CyberTheme.primaryAccent),
+                        Container(width: 1, height: 50, color: Colors.white10),
+                        _buildSpeedDial(Icons.upload_rounded, "UPLOAD", netProv.uploadSpeed, netProv.uploadUnit, const Color(0xFFB388FF)), // Neon purple
+                      ],
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 24),
+
+          // ──────────────────────────────────────────────────────────────────
+          // EXISTING FLOATING OVERLAY CONTROLS
+          // ──────────────────────────────────────────────────────────────────
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(color: CyberTheme.primaryAccent.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: CyberTheme.primaryAccent)),
@@ -114,6 +162,7 @@ class _MonitorsScreenState extends State<MonitorsScreen> {
           Container(
             decoration: BoxDecoration(color: CyberTheme.surface, borderRadius: BorderRadius.circular(12)),
             child: SwitchListTile(
+              activeTrackColor: CyberTheme.primaryAccent.withValues(alpha: 0.5),
               activeColor: CyberTheme.primaryAccent,
               secondary: const Icon(Icons.desktop_windows, color: Colors.white54),
               title: const Text("Master HUD Overlay", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
@@ -122,8 +171,62 @@ class _MonitorsScreenState extends State<MonitorsScreen> {
               onChanged: _toggleOverlay,
             ),
           ),
+
+          if (_isOverlayActive) ...[
+            const SizedBox(height: 32),
+            const Text("HUD LAYOUT STYLE", style: TextStyle(color: CyberTheme.primaryAccent, fontWeight: FontWeight.bold, letterSpacing: 1.5, fontSize: 12)),
+            const SizedBox(height: 16),
+            ...List.generate(_hudStyles.length, (index) {
+              bool isSelected = _selectedStyle == index;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: InkWell(
+                  onTap: () => _updateStyle(index),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                    decoration: BoxDecoration(
+                      color: isSelected ? CyberTheme.primaryAccent.withValues(alpha: 0.1) : CyberTheme.surface,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: isSelected ? CyberTheme.primaryAccent : Colors.transparent),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(_hudStyles[index], style: TextStyle(color: isSelected ? CyberTheme.primaryAccent : Colors.white70, fontWeight: FontWeight.bold)),
+                        if (isSelected) const Icon(Icons.check_circle, color: CyberTheme.primaryAccent, size: 20)
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            })
+          ]
         ],
       ),
+    );
+  }
+
+  // ✨ UI Helper for the Speed Dials
+  Widget _buildSpeedDial(IconData icon, String label, double speed, String unit, Color color) {
+    return Column(
+      children: [
+        Icon(icon, color: color, size: 28),
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(speed.toStringAsFixed(1), style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold, fontFeatures: const [FontFeature.tabularFigures()])),
+            const SizedBox(width: 4),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4.0),
+              child: Text(unit, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(label, style: const TextStyle(color: Colors.white38, fontSize: 10)),
+      ],
     );
   }
 }

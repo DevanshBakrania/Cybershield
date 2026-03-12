@@ -15,6 +15,8 @@ import android.app.ActivityManager
 import android.os.Environment
 import android.os.StatFs
 import android.net.TrafficStats
+import java.net.NetworkInterface
+import java.net.Inet4Address
 
 class CyberWidgetProvider : AppWidgetProvider() {
 
@@ -133,6 +135,178 @@ class CyberWidgetProvider : AppWidgetProvider() {
             views.setOnClickPendingIntent(R.id.wid_model, pendingIntent)
 
             // Push the update to the screen!
+            appWidgetManager.updateAppWidget(appWidgetId, views)
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ✨ THE CYBER STRIP (4x1)
+// ─────────────────────────────────────────────────────────────────────────────
+class CyberStripProvider : AppWidgetProvider() {
+    override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
+        for (appWidgetId in appWidgetIds) {
+            val views = RemoteViews(context.packageName, R.layout.widget_cyber_strip)
+
+            // Get RAM
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val memInfo = ActivityManager.MemoryInfo()
+            am.getMemoryInfo(memInfo)
+            val ramPct = (((memInfo.totalMem - memInfo.availMem).toDouble() / memInfo.totalMem) * 100).toInt()
+
+            // Get Battery & Temp
+            val batteryStatus: Intent? = IntentFilter(Intent.ACTION_BATTERY_CHANGED).let { context.applicationContext.registerReceiver(null, it) }
+            val level: Int = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale: Int = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            val batPct = if (level != -1 && scale != -1) (level * 100 / scale.toFloat()).toInt() else 0
+            val temp = batteryStatus?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1) ?: -1
+            val batTemp = if (temp > 0) temp / 10 else 0
+
+            views.setTextViewText(R.id.strip_ram_val, "$ramPct%")
+            views.setTextViewText(R.id.strip_bat_val, "$batPct%")
+            views.setTextViewText(R.id.strip_temp_val, "$batTemp°C")
+
+            // ✨ MANUAL SYNC BUTTON LOGIC
+            val syncIntent = Intent(context, CyberStripProvider::class.java).apply {
+                action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(appWidgetId))
+            }
+            val pendingSync = PendingIntent.getBroadcast(context, appWidgetId, syncIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            views.setOnClickPendingIntent(R.id.btn_sync_strip, pendingSync)
+
+            appWidgetManager.updateAppWidget(appWidgetId, views)
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ✨ THE POWER NODE (2x2)
+// ─────────────────────────────────────────────────────────────────────────────
+class PowerNodeProvider : AppWidgetProvider() {
+    override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
+        for (appWidgetId in appWidgetIds) {
+            val views = RemoteViews(context.packageName, R.layout.widget_power_node)
+
+            val batteryStatus: Intent? = IntentFilter(Intent.ACTION_BATTERY_CHANGED).let { context.applicationContext.registerReceiver(null, it) }
+            val level: Int = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale: Int = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            val batPct = if (level != -1 && scale != -1) (level * 100 / scale.toFloat()).toInt() else 0
+            val temp = batteryStatus?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, -1) ?: -1
+            val batTemp = if (temp > 0) temp / 10 else 0
+
+            views.setTextViewText(R.id.node_bat_val, "$batPct%")
+            views.setTextViewText(R.id.node_temp_val, "$batTemp°C")
+
+            // ✨ FILL THE NEON RING
+            views.setProgressBar(R.id.node_bat_ring, 100, batPct, false)
+
+            // ✨ MANUAL SYNC BUTTON LOGIC
+            val syncIntent = Intent(context, PowerNodeProvider::class.java).apply {
+                action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(appWidgetId))
+            }
+            val pendingSync = PendingIntent.getBroadcast(context, appWidgetId, syncIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            views.setOnClickPendingIntent(R.id.btn_sync_power, pendingSync)
+
+            appWidgetManager.updateAppWidget(appWidgetId, views)
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ✨ THE MEMORY NODE (2x2)
+// ─────────────────────────────────────────────────────────────────────────────
+class MemoryNodeProvider : AppWidgetProvider() {
+    override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
+        for (appWidgetId in appWidgetIds) {
+            val views = RemoteViews(context.packageName, R.layout.widget_memory_node)
+
+            // Get RAM
+            val am = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            val memInfo = ActivityManager.MemoryInfo()
+            am.getMemoryInfo(memInfo)
+            val ramPct = (((memInfo.totalMem - memInfo.availMem).toDouble() / memInfo.totalMem) * 100).toInt()
+
+            // Get Storage
+            val path = Environment.getDataDirectory()
+            val stat = StatFs(path.path)
+            val totalStorage = stat.blockCountLong * stat.blockSizeLong
+            val freeStorage = stat.availableBlocksLong * stat.blockSizeLong
+            val usedStorage = totalStorage - freeStorage
+            val storagePct = if (totalStorage > 0) ((usedStorage.toDouble() / totalStorage) * 100).toInt() else 0
+
+            views.setTextViewText(R.id.node_ram_val, "$ramPct%")
+            views.setTextViewText(R.id.node_storage_val, "Storage: $storagePct%")
+
+            // ✨ FILL THE NEON RING
+            views.setProgressBar(R.id.node_ram_ring, 100, ramPct, false)
+
+            // ✨ MANUAL SYNC BUTTON LOGIC
+            val syncIntent = Intent(context, MemoryNodeProvider::class.java).apply {
+                action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(appWidgetId))
+            }
+            val pendingSync = PendingIntent.getBroadcast(context, appWidgetId, syncIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            views.setOnClickPendingIntent(R.id.btn_sync_memory, pendingSync)
+
+            appWidgetManager.updateAppWidget(appWidgetId, views)
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ✨ THE NETWORK UPLINK (2x2)
+// ─────────────────────────────────────────────────────────────────────────────
+class NetworkUplinkProvider : AppWidgetProvider() {
+
+    // Helper function to get the live IP Address
+    private fun getLocalIpAddress(): String {
+        try {
+            val en = NetworkInterface.getNetworkInterfaces()
+            while (en.hasMoreElements()) {
+                val intf = en.nextElement()
+                val enumIpAddr = intf.inetAddresses
+                while (enumIpAddr.hasMoreElements()) {
+                    val inetAddress = enumIpAddr.nextElement()
+                    if (!inetAddress.isLoopbackAddress && inetAddress is Inet4Address) {
+                        return inetAddress.hostAddress?.toString() ?: "--"
+                    }
+                }
+            }
+        } catch (ex: Exception) {
+            ex.printStackTrace()
+        }
+        return "Offline"
+    }
+
+    override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
+        for (appWidgetId in appWidgetIds) {
+            val views = RemoteViews(context.packageName, R.layout.widget_network_uplink)
+
+            // 1. Get Live IP
+            val ipAddress = getLocalIpAddress()
+            views.setTextViewText(R.id.node_ip_val, ipAddress)
+
+            // 2. Get Data Traffic
+            val rxBytes = TrafficStats.getTotalRxBytes()
+            val txBytes = TrafficStats.getTotalTxBytes()
+            val totalBytes = if (rxBytes == TrafficStats.UNSUPPORTED.toLong()) 0L else (rxBytes + txBytes)
+            val mb = totalBytes / (1024 * 1024)
+
+            if (mb > 1024) {
+                views.setTextViewText(R.id.node_data_val, String.format("Traffic: %.1f GB", mb / 1024.0))
+            } else {
+                views.setTextViewText(R.id.node_data_val, "Traffic: $mb MB")
+            }
+
+            // 3. ✨ MANUAL SYNC BUTTON LOGIC
+            val syncIntent = Intent(context, NetworkUplinkProvider::class.java).apply {
+                action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(appWidgetId))
+            }
+            val pendingSync = PendingIntent.getBroadcast(context, appWidgetId, syncIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+            views.setOnClickPendingIntent(R.id.btn_sync_network, pendingSync)
+
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }
     }
